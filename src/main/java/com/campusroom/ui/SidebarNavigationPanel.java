@@ -272,7 +272,7 @@ public class SidebarNavigationPanel extends JPanel {
         btnToggleCollapse.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         btnToggleCollapse.setPreferredSize(new Dimension(28, 28));
         btnToggleCollapse.setMaximumSize(new Dimension(28, 28));
-        btnToggleCollapse.setToolTipText("Ciutkan Sidebar (Minimize)");
+        btnToggleCollapse.setToolTipText("Ciutkan Sidebar");
         btnToggleCollapse.addActionListener(e -> toggleCollapse());
 
         brandHeader.add(btnToggleCollapse, BorderLayout.EAST);
@@ -481,13 +481,13 @@ public class SidebarNavigationPanel extends JPanel {
         actionRow.setOpaque(false);
 
         JButton btnSwitch = ModernUIHelper.createStyledButton("Ganti Akun", new Color(30, 41, 59), new Color(226, 232, 240), 10, false);
-        btnSwitch.setToolTipText("Ganti peran demo (Mahasiswa / Sekdek / Admin)");
+        btnSwitch.setToolTipText("Ganti akun");
         btnSwitch.addActionListener(e -> {
             if (listener != null) listener.onSwitchRoleRequested();
         });
 
         JButton btnLogout = ModernUIHelper.createStyledButton("Keluar", new Color(239, 68, 68, 30), new Color(252, 165, 165), 10, false);
-        btnLogout.setToolTipText("Keluar dari aplikasi ke layar login");
+        btnLogout.setToolTipText("Keluar");
         btnLogout.addActionListener(e -> {
             if (listener != null) listener.onLogoutRequested();
         });
@@ -594,7 +594,7 @@ public class SidebarNavigationPanel extends JPanel {
             brandHeader.add(logoBox);
             brandHeader.add(Box.createVerticalStrut(6));
             btnToggleCollapse.setText("»");
-            btnToggleCollapse.setToolTipText("Perluas Sidebar (Expand)");
+            btnToggleCollapse.setToolTipText("Perluas Sidebar");
             btnToggleCollapse.setAlignmentX(Component.CENTER_ALIGNMENT);
             brandHeader.add(btnToggleCollapse);
 
@@ -643,7 +643,7 @@ public class SidebarNavigationPanel extends JPanel {
             textCol.setVisible(true);
             brandHeader.add(textCol, BorderLayout.CENTER);
             btnToggleCollapse.setText("«");
-            btnToggleCollapse.setToolTipText("Ciutkan Sidebar (Minimize)");
+            btnToggleCollapse.setToolTipText("Ciutkan Sidebar");
             brandHeader.add(btnToggleCollapse, BorderLayout.EAST);
 
             // Container padding & scrollbar

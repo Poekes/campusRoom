@@ -1,11 +1,12 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BookingDao;
-import com.campusroom.dao.RoomDao;
-import com.campusroom.dao.ScheduleDao;
 import com.campusroom.model.Booking;
 import com.campusroom.model.RegularSchedule;
 import com.campusroom.model.Room;
+import com.campusroom.service.BookingService;
+import com.campusroom.service.MasterDataService;
+import com.campusroom.service.ScheduleService;
+import com.campusroom.service.ServiceResult;
 import java.awt.*;
 import java.util.List;
 import javax.swing.*;
@@ -17,9 +18,9 @@ import javax.swing.table.DefaultTableModel;
  * Mendukung embedding panel terpisah di CardLayout (tanpa nested tab) atau via tabbed pane.
  */
 public class SecretaryPanel extends JPanel {
-    private final BookingDao bookingDao = new BookingDao();
-    private final ScheduleDao scheduleDao = new ScheduleDao();
-    private final RoomDao roomDao = new RoomDao();
+    private final BookingService bookingService = new BookingService();
+    private final ScheduleService scheduleService = new ScheduleService();
+    private final MasterDataService masterDataService = new MasterDataService();
     private final Runnable onDataChangedCallback;
 
     private JPanel pnlValidation;
@@ -82,8 +83,8 @@ public class SecretaryPanel extends JPanel {
         rightHeader.add(lblPendingCount);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Validasi Pengajuan Jadwal Mahasiswa",
-                "Verifikasi permohonan ruangan terhadap master jadwal dekanat sebelum diteruskan ke Admin Master.",
+                "Validasi Pengajuan",
+                "Periksa dan verifikasi permohonan ruangan mahasiswa.",
                 rightHeader
         );
         panel.add(header, BorderLayout.NORTH);
@@ -117,10 +118,10 @@ public class SecretaryPanel extends JPanel {
         JButton btnRefresh = ModernUIHelper.createStyledButton("Muat Ulang", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
         btnRefresh.addActionListener(e -> refreshData());
 
-        JButton btnReject = ModernUIHelper.createStyledButton("Tolak Pengajuan", ModernUIHelper.COLOR_DANGER, Color.WHITE, 12, true);
+        JButton btnReject = ModernUIHelper.createStyledButton("Tolak", ModernUIHelper.COLOR_DANGER, Color.WHITE, 12, true);
         btnReject.addActionListener(e -> handleValidateBooking(false));
 
-        JButton btnValidate = ModernUIHelper.createStyledButton("Validasi & Teruskan ke Admin", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
+        JButton btnValidate = ModernUIHelper.createStyledButton("Setujui", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
         btnValidate.addActionListener(e -> handleValidateBooking(true));
 
         actionPanel.add(btnRefresh);
@@ -148,8 +149,8 @@ public class SecretaryPanel extends JPanel {
         rightHeader.add(lblScheduleCount);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Master Jadwal Tetap Perkuliahan Semester",
-                "Jadwal rutin yang terdaftar di sini secara otomatis mengunci ruangan dan mencegah bentrokan peminjaman.",
+                "Jadwal Perkuliahan Tetap",
+                "Daftar jadwal perkuliahan rutin semester.",
                 rightHeader
         );
         panel.add(header, BorderLayout.NORTH);
@@ -177,10 +178,10 @@ public class SecretaryPanel extends JPanel {
         JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
         actionPanel.setOpaque(false);
 
-        JButton btnDeleteSchedule = ModernUIHelper.createStyledButton("Hapus Jadwal Terpilih", new Color(254, 226, 226), ModernUIHelper.COLOR_DANGER, 11, false);
+        JButton btnDeleteSchedule = ModernUIHelper.createStyledButton("Hapus Jadwal", new Color(254, 226, 226), ModernUIHelper.COLOR_DANGER, 11, false);
         btnDeleteSchedule.addActionListener(e -> handleDeleteSchedule());
 
-        JButton btnAddSchedule = ModernUIHelper.createStyledButton("Tambah Jadwal Tetap", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
+        JButton btnAddSchedule = ModernUIHelper.createStyledButton("Tambah Jadwal", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
         btnAddSchedule.addActionListener(e -> showAddScheduleDialog());
 
         actionPanel.add(btnDeleteSchedule);
@@ -191,9 +192,9 @@ public class SecretaryPanel extends JPanel {
     }
 
     public void refreshData() {
-        // 1. Refresh Pending Bookings
+        // 1. Refresh Pending Bookings via BookingService
         modelPending.setRowCount(0);
-        List<Booking> bookings = bookingDao.getBookingsByStatus("MENUNGGU_SEKDEK");
+        List<Booking> bookings = bookingService.getBookingsByStatus("MENUNGGU_SEKDEK");
         for (Booking b : bookings) {
             modelPending.addRow(new Object[]{
                     b.getId(),
@@ -213,9 +214,9 @@ public class SecretaryPanel extends JPanel {
             lblPendingCount.setText(bookings.size() + " Pengajuan Menunggu");
         }
 
-        // 2. Refresh Schedules
+        // 2. Refresh Schedules via ScheduleService
         modelSchedules.setRowCount(0);
-        List<RegularSchedule> schedules = scheduleDao.getAllSchedules();
+        List<RegularSchedule> schedules = scheduleService.getAllSchedules();
         for (RegularSchedule s : schedules) {
             modelSchedules.addRow(new Object[]{
                     s.getId(),
@@ -237,7 +238,7 @@ public class SecretaryPanel extends JPanel {
     private void handleValidateBooking(boolean approve) {
         int selectedRow = tblPending.getSelectedRow();
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(this, "Pilih salah satu baris pengajuan terlebih dahulu!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih pengajuan terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -245,32 +246,31 @@ public class SecretaryPanel extends JPanel {
         String bookingCode = (String) modelPending.getValueAt(selectedRow, 1);
 
         String note = JOptionPane.showInputDialog(this,
-                (approve ? "Masukkan catatan verifikasi (opsional):" : "Masukkan alasan penolakan:"),
-                approve ? "Validasi Sekretaris Dekan" : "Tolak Pengajuan",
+                (approve ? "Catatan (opsional):" : "Alasan penolakan:"),
+                approve ? "Setujui Pengajuan" : "Tolak Pengajuan",
                 JOptionPane.QUESTION_MESSAGE);
 
         if (note == null && !approve) {
             return;
         }
 
-        String newStatus = approve ? "DIVALIDASI_SEKDEK" : "DITOLAK";
-        if (note == null) note = approve ? "Diverifikasi tidak ada bentrokan dengan jadwal tetap dekanat." : "Ditolak.";
-
-        boolean success = bookingDao.updateSecretaryValidation(bookingId, newStatus, note);
-        if (success) {
+        ServiceResult<Void> result = bookingService.validateBySecretary(bookingId, approve, note);
+        if (result.isSuccess()) {
             JOptionPane.showMessageDialog(this,
-                    "Pengajuan " + bookingCode + " berhasil diubah menjadi: " + (approve ? "DIVALIDASI_SEKDEK (Diteruskan ke Admin)" : "DITOLAK"),
+                    "Pengajuan " + bookingCode + (approve ? " disetujui." : " ditolak."),
                     "Sukses",
                     JOptionPane.INFORMATION_MESSAGE);
             refreshData();
             if (onDataChangedCallback != null) onDataChangedCallback.run();
+        } else {
+            JOptionPane.showMessageDialog(this, result.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void showAddScheduleDialog() {
-        List<Room> allRooms = roomDao.getAllRooms();
+        List<Room> allRooms = masterDataService.getAllRooms();
         if (allRooms.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Data ruangan belum tersedia!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Data ruangan belum tersedia.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -289,17 +289,17 @@ public class SecretaryPanel extends JPanel {
         JTextField txtClass = new JTextField("TI-3A", 10);
 
         JPanel panel = new JPanel(new GridLayout(7, 2, 8, 8));
-        panel.add(new JLabel("Pilih Ruangan:"));
+        panel.add(new JLabel("Ruangan:"));
         panel.add(cbRoom);
-        panel.add(new JLabel("Hari Perkuliahan:"));
+        panel.add(new JLabel("Hari:"));
         panel.add(cbDay);
         panel.add(new JLabel("Jam Mulai:"));
         panel.add(cbStart);
         panel.add(new JLabel("Jam Selesai:"));
         panel.add(cbEnd);
-        panel.add(new JLabel("Kode Mata Kuliah:"));
+        panel.add(new JLabel("Kode MK:"));
         panel.add(txtCode);
-        panel.add(new JLabel("Nama Mata Kuliah:"));
+        panel.add(new JLabel("Nama MK:"));
         panel.add(txtCourse);
         panel.add(new JLabel("Dosen & Kelas:"));
 
@@ -308,7 +308,7 @@ public class SecretaryPanel extends JPanel {
         pSub.add(txtClass, BorderLayout.EAST);
         panel.add(pSub);
 
-        int result = JOptionPane.showConfirmDialog(this, panel, "Tambah Jadwal Perkuliahan Tetap (Sekdek)", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        int result = JOptionPane.showConfirmDialog(this, panel, "Tambah Jadwal Kuliah", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (result == JOptionPane.OK_OPTION) {
             Room r = (Room) cbRoom.getSelectedItem();
             if (r == null) return;
@@ -324,10 +324,13 @@ public class SecretaryPanel extends JPanel {
                     txtClass.getText().trim()
             );
 
-            if (scheduleDao.addSchedule(schedule)) {
-                JOptionPane.showMessageDialog(this, "Jadwal tetap berhasil disimpan!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<RegularSchedule> res = scheduleService.addSchedule(schedule);
+            if (res.isSuccess()) {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Peringatan", JOptionPane.WARNING_MESSAGE);
             }
         }
     }
@@ -335,19 +338,22 @@ public class SecretaryPanel extends JPanel {
     private void handleDeleteSchedule() {
         int selectedRow = tblSchedules.getSelectedRow();
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(this, "Pilih salah satu jadwal yang ingin dihapus!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih jadwal yang ingin dihapus.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int scheduleId = (int) modelSchedules.getValueAt(selectedRow, 0);
         String course = (String) modelSchedules.getValueAt(selectedRow, 6);
 
-        int confirm = JOptionPane.showConfirmDialog(this, "Hapus jadwal tetap: " + course + "?", "Konfirmasi", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Hapus jadwal: " + course + "?", "Konfirmasi", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
-            if (scheduleDao.deleteSchedule(scheduleId)) {
-                JOptionPane.showMessageDialog(this, "Jadwal berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Void> res = scheduleService.deleteSchedule(scheduleId);
+            if (res.isSuccess()) {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
             }
         }
     }

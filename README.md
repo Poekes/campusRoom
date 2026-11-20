@@ -34,6 +34,22 @@ Fitur editor denah interaktif dengan Ribbon Toolbar untuk mengatur posisi, ukura
 
 ---
 
+## Arsitektur Aplikasi (Layered Architecture)
+
+Aplikasi dibangun dengan prinsip pemisahan tanggung jawab (*Separation of Concerns*) berlapis:
+1. **Presentation Layer (`com.campusroom.ui`)**: Seluruh antarmuka pengguna berbasis Java Swing (`MainFrame`, `StudentBookingPanel`, `SecretaryPanel`, `AdminPanel`, `LayoutEditorPanel`, `BookingDialog`, `RoomInspectorDialog`). Tidak mengakses database / DAO secara langsung.
+2. **Service Layer (`com.campusroom.service`)**: Mengenkapsulasi seluruh proses bisnis, validasi aturan alur kerja, deteksi bentrok jadwal, otentikasi sesi, dan manajemen layout denah:
+   - `AuthService`: Sesi login, logout, dan pengalihan peran aktif.
+   - `BookingService`: Siklus pengajuan booking, validasi input, deteksi bentrok jadwal otomatis, persetujuan Sekdek, dan approval akhir Admin Sarpras.
+   - `ScheduleService`: Pengelolaan master jadwal reguler perkuliahan semester dan pencegahan tumpang tindih slot jam kuliah.
+   - `AvailabilityService`: Kalkulasi ketersediaan ruangan real-time (Kosong vs Terpakai).
+   - `MasterDataService`: Pengelolaan entitas Kampus, Gedung, Ruangan (validasi keunikan kode), dan blueprint denah.
+   - `ServiceResult<T>`: Wrapper respons bisnis terstandarisasi (status sukses, pesan validasi, dan data payload).
+3. **Data Access Layer (`com.campusroom.dao`)**: Mengelola eksekusi query SQL SQLite secara aman menggunakan `PreparedStatement`.
+4. **Model Layer (`com.campusroom.model`)**: Entitas data berorientasi objek yang merepresentasikan domain kampus.
+
+---
+
 ## Akun Demo
 
 | Role | Username | Password | Deskripsi |

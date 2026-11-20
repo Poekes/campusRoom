@@ -1,13 +1,12 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BookingDao;
-import com.campusroom.dao.BuildingDao;
-import com.campusroom.dao.CampusDao;
-import com.campusroom.dao.RoomDao;
 import com.campusroom.model.Booking;
 import com.campusroom.model.Building;
 import com.campusroom.model.Campus;
 import com.campusroom.model.Room;
+import com.campusroom.service.BookingService;
+import com.campusroom.service.MasterDataService;
+import com.campusroom.service.ServiceResult;
 import java.awt.*;
 import java.util.List;
 import javax.swing.*;
@@ -19,10 +18,8 @@ import javax.swing.table.DefaultTableModel;
  * Mendukung embedding panel terpisah di CardLayout (tanpa nested tab) atau via tabbed pane.
  */
 public class AdminPanel extends JPanel {
-    private final BookingDao bookingDao = new BookingDao();
-    private final CampusDao campusDao = new CampusDao();
-    private final BuildingDao buildingDao = new BuildingDao();
-    private final RoomDao roomDao = new RoomDao();
+    private final BookingService bookingService = new BookingService();
+    private final MasterDataService masterDataService = new MasterDataService();
     private final Runnable onDataChangedCallback;
 
     private JPanel pnlApproval;
@@ -98,8 +95,8 @@ public class AdminPanel extends JPanel {
         rightHeader.add(lblApprovalCount);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Approval Akhir & Penetapan Reservasi",
-                "Pengajuan yang telah divalidasi Sekretaris Dekan menunggu persetujuan final Admin Master untuk penguncian resmi.",
+                "Persetujuan Reservasi",
+                "Persetujuan akhir peminjaman ruangan.",
                 rightHeader
         );
         panel.add(header, BorderLayout.NORTH);
@@ -133,10 +130,10 @@ public class AdminPanel extends JPanel {
         JButton btnRefresh = ModernUIHelper.createStyledButton("Muat Ulang", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
         btnRefresh.addActionListener(e -> refreshData());
 
-        JButton btnReject = ModernUIHelper.createStyledButton("Tolak / Perintahkan Pindah", ModernUIHelper.COLOR_DANGER, Color.WHITE, 12, true);
+        JButton btnReject = ModernUIHelper.createStyledButton("Tolak", ModernUIHelper.COLOR_DANGER, Color.WHITE, 12, true);
         btnReject.addActionListener(e -> handleFinalApproval(false));
 
-        JButton btnApprove = ModernUIHelper.createStyledButton("Setujui Final (Kunci Ruangan)", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
+        JButton btnApprove = ModernUIHelper.createStyledButton("Setujui", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
         btnApprove.addActionListener(e -> handleFinalApproval(true));
 
         actions.add(btnRefresh);
@@ -153,8 +150,8 @@ public class AdminPanel extends JPanel {
         panel.setBackground(ModernUIHelper.BG_PAGE);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Manajemen Multi-Kampus & Gedung Perkuliahan",
-                "Konfigurasi seluruh lokasi kampus dan gedung bertingkat di lingkungan universitas.",
+                "Kampus & Gedung",
+                "Kelola data kampus dan gedung perkuliahan.",
                 null
         );
         panel.add(header, BorderLayout.NORTH);
@@ -187,7 +184,7 @@ public class AdminPanel extends JPanel {
 
         JPanel btnCampusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         btnCampusPanel.setOpaque(false);
-        JButton btnAddCampus = ModernUIHelper.createStyledButton("+ Tambah Kampus Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
+        JButton btnAddCampus = ModernUIHelper.createStyledButton("+ Tambah Kampus", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
         btnAddCampus.addActionListener(e -> showAddCampusDialog());
         btnCampusPanel.add(btnAddCampus);
 
@@ -205,7 +202,7 @@ public class AdminPanel extends JPanel {
                 BorderFactory.createEmptyBorder(10, 10, 10, 10)
         ));
 
-        JLabel lblBldTitle = new JLabel("Daftar Gedung Perkuliahan");
+        JLabel lblBldTitle = new JLabel("Daftar Gedung");
         lblBldTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
         lblBldTitle.setForeground(ModernUIHelper.TEXT_DARK);
         pnlBuilding.add(lblBldTitle, BorderLayout.NORTH);
@@ -222,7 +219,7 @@ public class AdminPanel extends JPanel {
 
         JPanel btnBuildingPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         btnBuildingPanel.setOpaque(false);
-        JButton btnAddBuilding = ModernUIHelper.createStyledButton("+ Tambah Gedung Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
+        JButton btnAddBuilding = ModernUIHelper.createStyledButton("+ Tambah Gedung", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
         btnAddBuilding.addActionListener(e -> showAddBuildingDialog());
         btnBuildingPanel.add(btnAddBuilding);
         pnlBuilding.add(btnBuildingPanel, BorderLayout.SOUTH);
@@ -250,8 +247,8 @@ public class AdminPanel extends JPanel {
         rightHeader.add(lblRoomCount);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Kelola Master Inventaris Ruangan",
-                "Tambah, hapus, dan perbarui spesifikasi ruangan kuliah, laboratorium, serta fasilitas penunjang.",
+                "Master Ruangan",
+                "Kelola data dan fasilitas ruangan.",
                 rightHeader
         );
         panel.add(header, BorderLayout.NORTH);
@@ -282,7 +279,7 @@ public class AdminPanel extends JPanel {
         JButton btnDeleteRoom = ModernUIHelper.createStyledButton("Hapus Ruangan", new Color(254, 226, 226), ModernUIHelper.COLOR_DANGER, 11, false);
         btnDeleteRoom.addActionListener(e -> handleDeleteRoom());
 
-        JButton btnAddRoom = ModernUIHelper.createStyledButton("+ Tambah Ruangan Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
+        JButton btnAddRoom = ModernUIHelper.createStyledButton("+ Tambah Ruangan", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
         btnAddRoom.addActionListener(e -> showAddRoomDialog());
 
         actions.add(btnDeleteRoom);
@@ -293,9 +290,9 @@ public class AdminPanel extends JPanel {
     }
 
     public void refreshData() {
-        // 1. Refresh Pending Admin Approval
+        // 1. Refresh Pending Admin Approval via BookingService
         modelAdminApproval.setRowCount(0);
-        List<Booking> pending = bookingDao.getBookingsByStatus("DIVALIDASI_SEKDEK");
+        List<Booking> pending = bookingService.getBookingsByStatus("DIVALIDASI_SEKDEK");
         for (Booking b : pending) {
             modelAdminApproval.addRow(new Object[]{
                     b.getId(),
@@ -314,23 +311,23 @@ public class AdminPanel extends JPanel {
             lblApprovalCount.setText(pending.size() + " Pengajuan Siap Disetujui");
         }
 
-        // 2. Refresh Kampus
+        // 2. Refresh Kampus via MasterDataService
         modelCampuses.setRowCount(0);
-        List<Campus> campuses = campusDao.getAllCampuses();
+        List<Campus> campuses = masterDataService.getAllCampuses();
         for (Campus c : campuses) {
             modelCampuses.addRow(new Object[]{c.getId(), c.getCode(), c.getName(), c.getAddress(), c.getCity()});
         }
 
-        // 3. Refresh Gedung
+        // 3. Refresh Gedung via MasterDataService
         modelBuildings.setRowCount(0);
-        List<Building> buildings = buildingDao.getAllBuildings();
+        List<Building> buildings = masterDataService.getAllBuildings();
         for (Building b : buildings) {
             modelBuildings.addRow(new Object[]{b.getId(), b.getCampusId(), b.getCode(), b.getName(), b.getTotalFloors()});
         }
 
-        // 4. Refresh Ruangan
+        // 4. Refresh Ruangan via MasterDataService
         modelRooms.setRowCount(0);
-        List<Room> rooms = roomDao.getAllRooms();
+        List<Room> rooms = masterDataService.getAllRooms();
         for (Room r : rooms) {
             modelRooms.addRow(new Object[]{
                     r.getId(),
@@ -352,7 +349,7 @@ public class AdminPanel extends JPanel {
     private void handleFinalApproval(boolean approve) {
         int row = tblAdminApproval.getSelectedRow();
         if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Pilih permohonan booking yang ingin diproses!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih permohonan terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -360,39 +357,42 @@ public class AdminPanel extends JPanel {
         String code = (String) modelAdminApproval.getValueAt(row, 1);
 
         String note = JOptionPane.showInputDialog(this,
-                (approve ? "Catatan penetapan admin (misal info pengambilan kunci):" : "Alasan penolakan / instruksi alternatif:"),
-                approve ? "Approval Final Booking" : "Tolak Booking",
+                (approve ? "Catatan (opsional):" : "Alasan penolakan:"),
+                approve ? "Setujui Peminjaman" : "Tolak Peminjaman",
                 JOptionPane.QUESTION_MESSAGE);
 
         if (note == null && !approve) return;
 
-        String status = approve ? "DISETUJUI" : "DITOLAK";
-        if (note == null) note = approve ? "Disetujui Admin Master. Ruangan telah dialokasikan resmi." : "Ditolak oleh admin.";
-
-        if (bookingDao.updateAdminApproval(bookingId, status, note)) {
+        ServiceResult<Void> result = bookingService.approveByAdmin(bookingId, approve, note);
+        if (result.isSuccess()) {
             JOptionPane.showMessageDialog(this,
-                    "Permohonan " + code + " berhasil di-" + (approve ? "SETUJUI dan DIKUNCI" : "TOLAK") + "!",
+                    "Pengajuan " + code + (approve ? " berhasil disetujui." : " ditolak."),
                     "Sukses",
                     JOptionPane.INFORMATION_MESSAGE);
             refreshData();
             if (onDataChangedCallback != null) onDataChangedCallback.run();
+        } else {
+            JOptionPane.showMessageDialog(this, result.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void handleDeleteCampus() {
         int row = tblCampuses.getSelectedRow();
         if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Pilih kampus yang ingin dihapus dari tabel!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih kampus terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
         int id = (int) modelCampuses.getValueAt(row, 0);
         String name = (String) modelCampuses.getValueAt(row, 2);
-        int confirm = JOptionPane.showConfirmDialog(this, "Yakin ingin menghapus kampus: " + name + "?", "Konfirmasi Hapus", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Hapus kampus " + name + "?", "Konfirmasi Hapus", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
-            if (campusDao.deleteCampus(id)) {
-                JOptionPane.showMessageDialog(this, "Kampus " + name + " berhasil dihapus!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Void> res = masterDataService.deleteCampus(id);
+            if (res.isSuccess()) {
+                JOptionPane.showMessageDialog(this, "Kampus " + name + " berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -409,24 +409,27 @@ public class AdminPanel extends JPanel {
         p.add(new JLabel("Alamat:")); p.add(txtAddress);
         p.add(new JLabel("Kota:")); p.add(txtCity);
 
-        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Kampus Baru", JOptionPane.OK_CANCEL_OPTION);
+        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Kampus", JOptionPane.OK_CANCEL_OPTION);
         if (res == JOptionPane.OK_OPTION) {
             Campus c = new Campus(txtCode.getText().trim(), txtName.getText().trim(), txtAddress.getText().trim(), txtCity.getText().trim());
-            if (campusDao.addCampus(c)) {
-                JOptionPane.showMessageDialog(this, "Kampus baru berhasil ditambahkan!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Campus> result = masterDataService.addCampus(c);
+            if (result.isSuccess()) {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Peringatan", JOptionPane.WARNING_MESSAGE);
             }
         }
     }
 
     private void showAddBuildingDialog() {
-        List<Campus> campuses = campusDao.getAllCampuses();
+        List<Campus> campuses = masterDataService.getAllCampuses();
         if (campuses.isEmpty()) return;
 
         JComboBox<Campus> cbCampus = new JComboBox<>(campuses.toArray(new Campus[0]));
         JTextField txtCode = new JTextField("GDG-D", 10);
-        JTextField txtName = new JTextField("Gedung D (Pusat Pembelajaran Digital)", 20);
+        JTextField txtName = new JTextField("Gedung D", 20);
         JSpinner spFloors = new JSpinner(new SpinnerNumberModel(4, 1, 10, 1));
 
         JPanel p = new JPanel(new GridLayout(4, 2, 8, 8));
@@ -435,21 +438,24 @@ public class AdminPanel extends JPanel {
         p.add(new JLabel("Nama Gedung:")); p.add(txtName);
         p.add(new JLabel("Jumlah Lantai:")); p.add(spFloors);
 
-        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Gedung Baru", JOptionPane.OK_CANCEL_OPTION);
+        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Gedung", JOptionPane.OK_CANCEL_OPTION);
         if (res == JOptionPane.OK_OPTION) {
             Campus sc = (Campus) cbCampus.getSelectedItem();
             if (sc == null) return;
             Building b = new Building(sc.getId(), txtCode.getText().trim(), txtName.getText().trim(), (Integer) spFloors.getValue(), "images/floorplan_gedung_a.png");
-            if (buildingDao.addBuilding(b)) {
-                JOptionPane.showMessageDialog(this, "Gedung baru berhasil disimpan!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Building> result = masterDataService.addBuilding(b);
+            if (result.isSuccess()) {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Peringatan", JOptionPane.WARNING_MESSAGE);
             }
         }
     }
 
     private void showAddRoomDialog() {
-        List<Building> buildings = buildingDao.getAllBuildings();
+        List<Building> buildings = masterDataService.getAllBuildings();
         if (buildings.isEmpty()) return;
 
         JComboBox<Building> cbBuilding = new JComboBox<>(buildings.toArray(new Building[0]));
@@ -473,7 +479,7 @@ public class AdminPanel extends JPanel {
         sub.add(txtFacilities, BorderLayout.CENTER);
         p.add(sub);
 
-        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Ruangan Baru", JOptionPane.OK_CANCEL_OPTION);
+        int res = JOptionPane.showConfirmDialog(this, p, "Tambah Ruangan", JOptionPane.OK_CANCEL_OPTION);
         if (res == JOptionPane.OK_OPTION) {
             Building b = (Building) cbBuilding.getSelectedItem();
             if (b == null) return;
@@ -489,10 +495,13 @@ public class AdminPanel extends JPanel {
                     360, 200, 180, 140
             );
 
-            if (roomDao.addRoom(r)) {
-                JOptionPane.showMessageDialog(this, "Ruangan berhasil ditambahkan! Anda dapat mengatur posisinya di Tab Desainer Denah.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Room> result = masterDataService.addRoom(r);
+            if (result.isSuccess()) {
+                JOptionPane.showMessageDialog(this, "Ruangan berhasil ditambahkan.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
             }
         }
     }
@@ -500,19 +509,22 @@ public class AdminPanel extends JPanel {
     private void handleDeleteRoom() {
         int row = tblRooms.getSelectedRow();
         if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Pilih ruangan yang ingin dihapus!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih ruangan terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int roomId = (int) modelRooms.getValueAt(row, 0);
         String code = (String) modelRooms.getValueAt(row, 2);
 
-        int confirm = JOptionPane.showConfirmDialog(this, "Hapus ruangan " + code + "? Tindakan ini juga akan menghapus jadwal terkait.", "Konfirmasi", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Hapus ruangan " + code + "?", "Konfirmasi Hapus", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
-            if (roomDao.deleteRoom(roomId)) {
-                JOptionPane.showMessageDialog(this, "Ruangan berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+            ServiceResult<Void> res = masterDataService.deleteRoom(roomId);
+            if (res.isSuccess()) {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 refreshData();
                 if (onDataChangedCallback != null) onDataChangedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, res.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
             }
         }
     }

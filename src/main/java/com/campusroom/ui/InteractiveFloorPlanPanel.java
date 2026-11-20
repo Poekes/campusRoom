@@ -291,7 +291,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
 
         if (layoutEditMode && selectedRoom != null && isNearBottomRightCorner(selectedRoom, logicalX, logicalY)) {
             setCursor(Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR));
-            setToolTipText("📐 Geser sudut untuk Mengubah Ukuran (Lebar × Tinggi)");
+            setToolTipText("Tarik sudut untuk ubah ukuran");
             return;
         }
 
@@ -303,7 +303,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
                 String statusBadgeHtml = hoveredRoom.isAvailable()
                         ? "<span style='background:#dcfce7; color:#166534; font-weight:bold; padding:2px 8px; border-radius:4px;'>● TERSEDIA</span>"
                         : "<span style='background:#fee2e2; color:#991b1b; font-weight:bold; padding:2px 8px; border-radius:4px;'>■ TERPAKAI</span>";
-                String editHint = layoutEditMode ? "<div style='margin-top:6px; padding-top:4px; border-top:1px solid #e2e8f0; color:#0284c7; font-size:10px;'>💡 <b>Double-click</b> untuk buka Properti Ruangan (Modal)</div>" : "";
+                String editHint = layoutEditMode ? "<div style='margin-top:6px; padding-top:4px; border-top:1px solid #e2e8f0; color:#0284c7; font-size:10px;'>Klik ganda untuk properti</div>" : "";
                 String tooltip = "<html><div style='font-family:sans-serif; padding:6px; color:#1e293b;'>" +
                         "<div style='font-size:13px; font-weight:bold; color:#0f172a; margin-bottom:4px;'>" + hoveredRoom.getCode() + " • " + hoveredRoom.getName() + "</div>" +
                         "<div style='color:#475569; font-size:11px; margin-bottom:4px;'>" + hoveredRoom.getRoomType() + " &nbsp;•&nbsp; <b>" + hoveredRoom.getCapacity() + " Kursi</b></div>" +

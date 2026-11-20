@@ -1,9 +1,9 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BookingDao;
 import com.campusroom.model.Booking;
 import com.campusroom.model.User;
 import com.campusroom.service.AuthService;
+import com.campusroom.service.BookingService;
 import java.awt.*;
 import java.util.List;
 import javax.swing.*;
@@ -14,7 +14,7 @@ import javax.swing.table.DefaultTableModel;
  * Didesain modern, minimalis, dengan page header elegan dan tabel berstatus pill badge.
  */
 public class StudentBookingPanel extends JPanel {
-    private final BookingDao bookingDao = new BookingDao();
+    private final BookingService bookingService = new BookingService();
     private final Runnable onNewBookingRequested;
 
     private JTable tblBookings;
@@ -39,7 +39,7 @@ public class StudentBookingPanel extends JPanel {
         lblTotalCount.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
         rightHeader.add(lblTotalCount);
 
-        JButton btnNewBooking = ModernUIHelper.createStyledButton("Buat Pengajuan Ruangan", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
+        JButton btnNewBooking = ModernUIHelper.createStyledButton("Ajukan Ruangan", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
         btnNewBooking.addActionListener(e -> {
             if (this.onNewBookingRequested != null) {
                 this.onNewBookingRequested.run();
@@ -48,8 +48,8 @@ public class StudentBookingPanel extends JPanel {
         rightHeader.add(btnNewBooking);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Riwayat & Pengajuan Ruangan Kuliah",
-                "Lacak status verifikasi permohonan peminjaman ruangan kuliah pengganti secara transparan dan realtime.",
+                "Riwayat Pengajuan",
+                "Daftar dan status permohonan peminjaman ruangan.",
                 rightHeader
         );
         add(header, BorderLayout.NORTH);
@@ -91,9 +91,7 @@ public class StudentBookingPanel extends JPanel {
     public void refreshData() {
         modelBookings.setRowCount(0);
         User user = AuthService.getInstance().getCurrentUser();
-        List<Booking> list = (user != null && "MAHASISWA".equalsIgnoreCase(user.getRole()))
-                ? bookingDao.getBookingsByUserId(user.getId())
-                : bookingDao.getAllBookings();
+        List<Booking> list = bookingService.getBookingsForUser(user);
 
         for (Booking b : list) {
             modelBookings.addRow(new Object[]{

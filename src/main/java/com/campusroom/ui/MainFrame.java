@@ -1,16 +1,13 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BookingDao;
-import com.campusroom.dao.BuildingDao;
-import com.campusroom.dao.CampusDao;
-import com.campusroom.dao.FloorPlanDao;
-import com.campusroom.dao.RoomDao;
 import com.campusroom.model.Building;
 import com.campusroom.model.Campus;
 import com.campusroom.model.Room;
 import com.campusroom.model.User;
 import com.campusroom.service.AuthService;
 import com.campusroom.service.AvailabilityService;
+import com.campusroom.service.BookingService;
+import com.campusroom.service.MasterDataService;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -35,11 +32,8 @@ import javax.swing.border.EmptyBorder;
  * 9. Visual Ribbon Layout Editor Denah (Admin Master)
  */
 public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.FloorPlanListener, AuthService.AuthListener, SidebarNavigationPanel.NavigationListener {
-    private final CampusDao campusDao = new CampusDao();
-    private final BuildingDao buildingDao = new BuildingDao();
-    private final RoomDao roomDao = new RoomDao();
-    private final FloorPlanDao floorPlanDao = new FloorPlanDao();
-    private final BookingDao bookingDao = new BookingDao();
+    private final MasterDataService masterDataService = new MasterDataService();
+    private final BookingService bookingService = new BookingService();
     private final AvailabilityService availabilityService = new AvailabilityService();
     private boolean isUpdatingFloorCombo = false;
 
@@ -165,7 +159,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
             } else {
                 switchToView(SidebarNavigationPanel.NAV_FLOOR_PLAN);
                 JOptionPane.showMessageDialog(this,
-                        "Silakan pilih salah satu ruangan yang kosong (warna hijau) pada denah terlebih dahulu!",
+                        "Pilih ruangan yang tersedia (hijau) pada denah terlebih dahulu.",
                         "Pilih Ruangan", JOptionPane.INFORMATION_MESSAGE);
             }
         });
@@ -1002,7 +996,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
     private void loadCampuses() {
         cbCampus.removeAllItems();
-        List<Campus> campuses = campusDao.getAllCampuses();
+        List<Campus> campuses = masterDataService.getAllCampuses();
         for (Campus c : campuses) {
             cbCampus.addItem(c);
         }
@@ -1016,7 +1010,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         Campus c = (Campus) cbCampus.getSelectedItem();
         if (c == null) return;
         cbBuilding.removeAllItems();
-        List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+        List<Building> buildings = masterDataService.getBuildingsByCampus(c.getId());
         for (Building b : buildings) {
             cbBuilding.addItem(b);
         }
@@ -1084,7 +1078,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         Campus c = (Campus) cbCampus.getSelectedItem();
         if (c != null) {
             cbBuilding.removeAllItems();
-            List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+            List<Building> buildings = masterDataService.getBuildingsByCampus(c.getId());
             for (Building b : buildings) {
                 cbBuilding.addItem(b);
             }
@@ -1146,12 +1140,12 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
         int floorNum = getSelectedFloorNumber();
 
-        // 1. Muat Blueprint Gambar Denah untuk Gedung & Lantai Terpilih
-        String imgPath = floorPlanDao.getFloorPlanImage(b.getId(), floorNum);
+        // 1. Muat Blueprint Gambar Denah untuk Gedung & Lantai Terpilih via MasterDataService
+        String imgPath = masterDataService.getFloorPlanImage(b.getId(), floorNum);
         floorCanvas.loadFloorImage(imgPath);
 
-        // 2. Muat Ruangan khusus untuk Gedung & Lantai Terpilih
-        currentRooms = roomDao.getRoomsByBuildingAndFloor(b.getId(), floorNum);
+        // 2. Muat Ruangan khusus untuk Gedung & Lantai Terpilih via MasterDataService
+        currentRooms = masterDataService.getRoomsByBuildingAndFloor(b.getId(), floorNum);
 
         LocalDate date;
         try {
@@ -1178,7 +1172,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         floorCanvas.setRooms(currentRooms);
 
         // Update Catalog Tab dengan seluruh ruangan di gedung ini beserta status ketersediaannya
-        List<Room> allBuildingRooms = roomDao.getRoomsByBuildingId(b.getId());
+        List<Room> allBuildingRooms = masterDataService.getRoomsByBuilding(b.getId());
         availabilityService.updateRoomsAvailability(allBuildingRooms, date, startTime, endTime);
         catalogPanel.setRooms(allBuildingRooms);
 
@@ -1216,13 +1210,13 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
             floorCanvas.setSelectedRoom(null);
         }
 
-        // Update badge counter di sidebar interaktif
+        // Update badge counter di sidebar interaktif via BookingService
         if (sidebarNav != null) {
             try {
-                int pendingSekdek = bookingDao.getBookingsByStatus("MENUNGGU_SEKDEK").size();
+                int pendingSekdek = bookingService.getPendingSecretaryCount();
                 sidebarNav.setBadgeCount(SidebarNavigationPanel.NAV_SEC_VALIDATION, pendingSekdek);
 
-                int pendingAdmin = bookingDao.getBookingsByStatus("DIVALIDASI_SEKDEK").size();
+                int pendingAdmin = bookingService.getPendingAdminCount();
                 sidebarNav.setBadgeCount(SidebarNavigationPanel.NAV_ADMIN_APPROVAL, pendingAdmin);
             } catch (Exception ignored) {
             }
@@ -1280,8 +1274,8 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
     private void handleLogout() {
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Apakah Anda yakin ingin keluar (logout) dari sistem CampusRoom?",
-                "Konfirmasi Logout",
+                "Yakin ingin keluar?",
+                "Keluar",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.QUESTION_MESSAGE);
 

@@ -54,8 +54,8 @@ public class RoomCatalogPanel extends JPanel {
         rightHeader.add(lblFilteredCount);
 
         JPanel header = ModernUIHelper.createPageHeader(
-                "Katalog & Pencarian Ruangan Kampus",
-                "Cari ruangan kuliah, laboratorium, dan auditorium berdasarkan kapasitas, tipe, dan fasilitas penunjang.",
+                "Katalog Ruangan",
+                "Daftar seluruh ruangan dan status ketersediaannya.",
                 rightHeader
         );
         topContainer.add(header);
@@ -145,29 +145,29 @@ public class RoomCatalogPanel extends JPanel {
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
         bottom.setOpaque(false);
-        JButton btnDetail = ModernUIHelper.createStyledButton("Lihat Detail Ruangan", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
+        JButton btnDetail = ModernUIHelper.createStyledButton("Detail Ruangan", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
         btnDetail.addActionListener(e -> {
             Room r = getSelectedRoom();
             if (r != null && callback != null) {
                 callback.onViewDetail(r);
             } else {
-                JOptionPane.showMessageDialog(this, "Pilih salah satu baris ruangan!", "Info", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Pilih ruangan terlebih dahulu.", "Info", JOptionPane.INFORMATION_MESSAGE);
             }
         });
 
-        JButton btnBook = ModernUIHelper.createStyledButton("Ajukan Booking Ruangan Terpilih ➔", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
+        JButton btnBook = ModernUIHelper.createStyledButton("Ajukan Booking", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 12, true);
         btnBook.addActionListener(e -> {
             Room r = getSelectedRoom();
             if (r != null) {
                 if (!r.isAvailable()) {
-                    JOptionPane.showMessageDialog(this, "Ruangan ini berstatus TERPAKAI pada slot waktu yang dipilih!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Ruangan sedang terpakai pada waktu ini.", "Peringatan", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
                 if (callback != null) {
                     callback.onBookRoom(r);
                 }
             } else {
-                JOptionPane.showMessageDialog(this, "Pilih salah satu baris ruangan!", "Info", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Pilih ruangan terlebih dahulu.", "Info", JOptionPane.INFORMATION_MESSAGE);
             }
         });
 

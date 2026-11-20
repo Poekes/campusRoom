@@ -1,16 +1,15 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BookingDao;
 import com.campusroom.model.Booking;
 import com.campusroom.model.Room;
 import com.campusroom.model.StudentUser;
 import com.campusroom.model.User;
 import com.campusroom.service.AuthService;
-import com.campusroom.service.AvailabilityService;
+import com.campusroom.service.BookingService;
+import com.campusroom.service.ServiceResult;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.Random;
 import javax.swing.*;
 
 /**
@@ -34,8 +33,7 @@ public class BookingDialog extends JDialog {
     private JTextField txtPhone;
     private JTextArea txtPurpose;
 
-    private final AvailabilityService availabilityService = new AvailabilityService();
-    private final BookingDao bookingDao = new BookingDao();
+    private final BookingService bookingService = new BookingService();
 
     public BookingDialog(JFrame parent, Room room, LocalDate date, String startTime, String endTime, Runnable onSuccess) {
         super(parent, "Form Pengajuan Booking Ruangan - " + (room != null ? room.getCode() : ""), true);
@@ -59,11 +57,11 @@ public class BookingDialog extends JDialog {
         headerPanel.setBackground(new Color(30, 41, 59));
         headerPanel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
 
-        JLabel titleLabel = new JLabel("Formulir Pengajuan Ruangan Kuliah");
+        JLabel titleLabel = new JLabel("Pengajuan Peminjaman Ruangan");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 16));
         titleLabel.setForeground(Color.WHITE);
 
-        JLabel subtitleLabel = new JLabel("Alur Validasi: Diajukan PJ -> Validasi Jadwal (Sekdek) -> Approval (Admin)");
+        JLabel subtitleLabel = new JLabel("Isi data untuk peminjaman ruangan.");
         subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
         subtitleLabel.setForeground(new Color(148, 163, 184));
 
@@ -139,7 +137,7 @@ public class BookingDialog extends JDialog {
         JButton btnCancel = new JButton("Batal");
         btnCancel.addActionListener(e -> dispose());
 
-        JButton btnSubmit = new JButton("Ajukan Pemesanan Ruangan");
+        JButton btnSubmit = new JButton("Kirim Pengajuan");
         btnSubmit.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSubmit.setBackground(new Color(16, 185, 129));
         btnSubmit.setForeground(Color.WHITE);
@@ -166,7 +164,7 @@ public class BookingDialog extends JDialog {
 
     private void handleSubmitBooking() {
         if (targetRoom == null) {
-            JOptionPane.showMessageDialog(this, "Silakan pilih ruangan terlebih dahulu!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih ruangan terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -174,7 +172,7 @@ public class BookingDialog extends JDialog {
         try {
             date = LocalDate.parse(txtDate.getText().trim());
         } catch (DateTimeParseException e) {
-            JOptionPane.showMessageDialog(this, "Format tanggal salah! Gunakan format YYYY-MM-DD (contoh: 2026-10-25)", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Format tanggal salah (YYYY-MM-DD).", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -186,57 +184,18 @@ public class BookingDialog extends JDialog {
         String name = txtName.getText().trim();
         String phone = txtPhone.getText().trim();
         String purpose = txtPurpose.getText().trim();
-
-        if (course.isEmpty() || nim.isEmpty() || name.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Mohon lengkapi data mata kuliah, NIM, dan nama!", "Peringatan", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        // Cek ketersediaan
-        String dayIndo = AvailabilityService.convertDayOfWeekToIndonesian(date.getDayOfWeek());
-        AvailabilityService.AvailabilityResult avail = availabilityService.checkAvailability(targetRoom.getId(), date, dayIndo, startTime, endTime);
-
-        if (!avail.isAvailable()) {
-            JOptionPane.showMessageDialog(this,
-                    "⚠️ Ruangan TIDAK DAPAT DIAJUKAN karena terjadi bentrokan waktu!\n\n" +
-                            avail.getOccupantInfo() + "\n\n" +
-                            "Silakan pilih slot waktu atau ruangan lain.",
-                    "Konflik Jadwal Terdeteksi",
-                    JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        // Buat kode booking acak unik
-        String bookingCode = "BK-" + date.toString().replace("-", "") + "-" + (100 + new Random().nextInt(900));
-
         User user = AuthService.getInstance().getCurrentUser();
-        int userId = (user != null) ? user.getId() : 1;
 
-        Booking booking = new Booking();
-        booking.setBookingCode(bookingCode);
-        booking.setRoomId(targetRoom.getId());
-        booking.setUserId(userId);
-        booking.setStudentNim(nim);
-        booking.setStudentName(name);
-        booking.setStudentPhone(phone);
-        booking.setCourseName(course);
-        booking.setLecturerName(lecturer);
-        booking.setBookingDate(date);
-        booking.setStartTime(startTime);
-        booking.setEndTime(endTime);
-        booking.setPurpose(purpose);
-        booking.setStatus("MENUNGGU_SEKDEK");
+        // Proses validasi dan booking di Service Layer
+        ServiceResult<Booking> result = bookingService.createBooking(
+                targetRoom, date, startTime, endTime, course, lecturer, nim, name, phone, purpose, user
+        );
 
-        boolean success = bookingDao.addBooking(booking);
-        if (success) {
+        if (result.isSuccess()) {
+            Booking booking = result.getData();
             JOptionPane.showMessageDialog(this,
-                    "✅ Pengajuan Booking Berhasil Dikirim!\n\n" +
-                            "Kode Booking: " + bookingCode + "\n" +
-                            "Ruangan: " + targetRoom.getCode() + " - " + targetRoom.getName() + "\n" +
-                            "Tanggal & Waktu: " + date + " (" + startTime + " - " + endTime + ")\n" +
-                            "Status Saat Ini: Menunggu Validasi Jadwal oleh Sekretaris Dekan.\n\n" +
-                            "Silakan pantau status pengajuan Anda.",
-                    "Pengajuan Sukses",
+                    "Pengajuan berhasil dikirim!\nKode Booking: " + booking.getBookingCode() + "\nStatus: Menunggu Validasi Sekdek",
+                    "Sukses",
                     JOptionPane.INFORMATION_MESSAGE);
 
             if (onSuccessCallback != null) {
@@ -244,7 +203,7 @@ public class BookingDialog extends JDialog {
             }
             dispose();
         } else {
-            JOptionPane.showMessageDialog(this, "Gagal menyimpan pengajuan ke sistem.", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, result.getMessage(), "Peringatan", JOptionPane.WARNING_MESSAGE);
         }
     }
 }

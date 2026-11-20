@@ -1,13 +1,11 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.BuildingDao;
-import com.campusroom.dao.CampusDao;
-import com.campusroom.dao.FloorPlanDao;
-import com.campusroom.dao.RoomDao;
 import com.campusroom.model.Building;
 import com.campusroom.model.Campus;
 import com.campusroom.model.Room;
 import com.campusroom.service.AvailabilityService;
+import com.campusroom.service.MasterDataService;
+import com.campusroom.service.ServiceResult;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -27,10 +25,7 @@ import javax.swing.border.EmptyBorder;
  * - Zero visual clutter, memaksimalkan area kerja canvas denah interaktif.
  */
 public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPanel.FloorPlanListener {
-    private final CampusDao campusDao = new CampusDao();
-    private final BuildingDao buildingDao = new BuildingDao();
-    private final RoomDao roomDao = new RoomDao();
-    private final FloorPlanDao floorPlanDao = new FloorPlanDao();
+    private final MasterDataService masterDataService = new MasterDataService();
     private final AvailabilityService availabilityService = new AvailabilityService();
     private final Runnable onLayoutSavedCallback;
 
@@ -614,7 +609,7 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
     public void loadCampuses() {
         isUpdatingCombos = true;
         cbCampus.removeAllItems();
-        List<Campus> campuses = campusDao.getAllCampuses();
+        List<Campus> campuses = masterDataService.getAllCampuses();
         for (Campus c : campuses) {
             cbCampus.addItem(c);
         }
@@ -632,7 +627,7 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
 
         isUpdatingCombos = true;
         cbBuilding.removeAllItems();
-        List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+        List<Building> buildings = masterDataService.getBuildingsByCampus(c.getId());
         for (Building b : buildings) {
             cbBuilding.addItem(b);
         }
@@ -691,7 +686,7 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         Campus c = (Campus) cbCampus.getSelectedItem();
         if (c != null) {
             cbBuilding.removeAllItems();
-            List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+            List<Building> buildings = masterDataService.getBuildingsByCampus(c.getId());
             for (Building b : buildings) {
                 cbBuilding.addItem(b);
             }
@@ -742,8 +737,8 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
 
         int floorNum = getSelectedFloorNumber();
 
-        // 1. Muat Blueprint Gambar Denah untuk Gedung & Lantai Ini
-        String imgPath = floorPlanDao.getFloorPlanImage(b.getId(), floorNum);
+        // 1. Muat Blueprint Gambar Denah untuk Gedung & Lantai Ini via MasterDataService
+        String imgPath = masterDataService.getFloorPlanImage(b.getId(), floorNum);
         floorCanvas.loadFloorImage(imgPath);
 
         if (imgPath != null && !imgPath.isEmpty()) {
@@ -761,8 +756,8 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
             lblBlueprintStatus.setForeground(new Color(100, 116, 139));
         }
 
-        // 2. Muat Ruangan khusus untuk Gedung & Lantai Ini dan sinkronkan availability real-time
-        currentRooms = roomDao.getRoomsByBuildingAndFloor(b.getId(), floorNum);
+        // 2. Muat Ruangan khusus untuk Gedung & Lantai Ini via MasterDataService dan sinkronkan availability real-time
+        currentRooms = masterDataService.getRoomsByBuildingAndFloor(b.getId(), floorNum);
         availabilityService.updateRoomsAvailability(currentRooms, LocalDate.now(), "08:00", "12:00");
         floorCanvas.setRooms(currentRooms);
 
@@ -786,11 +781,11 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         btnToolDeleteRoom.setEnabled(hasRoom);
 
         if (hasRoom) {
-            lblFooterStatus.setText("🚪 Terpilih: " + activeRoom.getCode() + " — " + activeRoom.getName() +
-                    " (" + activeRoom.getWidth() + "×" + activeRoom.getHeight() + " px) @ Posisi (" + activeRoom.getPosX() + ", " + activeRoom.getPosY() + ")");
+            lblFooterStatus.setText("Terpilih: " + activeRoom.getCode() + " — " + activeRoom.getName() +
+                    " (" + activeRoom.getWidth() + "×" + activeRoom.getHeight() + " px) @ (" + activeRoom.getPosX() + ", " + activeRoom.getPosY() + ")");
             btnFooterInspector.setVisible(true);
         } else {
-            lblFooterStatus.setText("💡 Navigasi Canvas: Klik ruangan untuk memilih • Tarik sudut kanan-bawah untuk resize • Double-click ruangan untuk buka Properti Ruangan (Modal)");
+            lblFooterStatus.setText("Klik ruangan untuk memilih • Tarik sudut untuk resize • Klik ganda untuk properti");
             btnFooterInspector.setVisible(false);
         }
     }
@@ -806,25 +801,25 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         int nextFloor = currentMax + 1;
 
         String input = JOptionPane.showInputDialog(this,
-                "Tambah tingkat lantai baru untuk " + b.getName() + ":\nNomor tingkat lantai:",
+                "Nomor lantai baru:",
                 String.valueOf(nextFloor));
         if (input == null || input.trim().isEmpty()) return;
 
         try {
             int newFloorNum = Integer.parseInt(input.trim());
             if (newFloorNum <= 0) {
-                JOptionPane.showMessageDialog(this, "Nomor lantai harus lebih besar dari 0!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Nomor lantai harus lebih dari 0.", "Peringatan", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
             int newTotal = Math.max(b.getTotalFloors(), newFloorNum);
-            boolean ok = buildingDao.updateTotalFloors(b.getId(), newTotal);
-            if (ok) {
+            ServiceResult<Void> ok = masterDataService.updateTotalFloors(b.getId(), newTotal);
+            if (ok.isSuccess()) {
                 b.setTotalFloors(newTotal);
 
-                // Buat blueprint bawaan untuk lantai baru jika belum ada
+                // Buat blueprint bawaan untuk lantai baru jika belum ada via MasterDataService
                 String defaultImg = (b.getId() == 3) ? "images/kampus2_lantai_1.png" : ((b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png");
-                floorPlanDao.saveFloorPlanImage(b.getId(), newFloorNum, defaultImg);
+                masterDataService.saveFloorPlanImage(b.getId(), newFloorNum, defaultImg);
 
                 // Perbarui dropdown lantai
                 isUpdatingCombos = true;
@@ -838,16 +833,15 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 onFloorChanged();
 
                 JOptionPane.showMessageDialog(this,
-                        "✅ Lantai " + newFloorNum + " berhasil ditambahkan ke " + b.getName() + "!\n" +
-                                "Denah layout baru telah siap. Anda dapat mengunggah gambar blueprint khusus dan menambahkan ruangan.",
-                        "Lantai Baru Berhasil Dibuat", JOptionPane.INFORMATION_MESSAGE);
+                        "Lantai " + newFloorNum + " berhasil ditambahkan.",
+                        "Sukses", JOptionPane.INFORMATION_MESSAGE);
 
                 if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
             } else {
-                JOptionPane.showMessageDialog(this, "Gagal menambahkan lantai baru ke sistem.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, ok.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Nomor lantai harus berupa angka positif!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Nomor lantai harus berupa angka.", "Peringatan", JOptionPane.WARNING_MESSAGE);
         }
     }
 
@@ -856,25 +850,25 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         if (b == null) return;
         int currentMax = Math.max(1, b.getTotalFloors());
         if (currentMax <= 1) {
-            JOptionPane.showMessageDialog(this, "Gedung harus memiliki minimal 1 tingkat lantai!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Gedung minimal memiliki 1 lantai.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        List<Room> roomsOnTopFloor = roomDao.getRoomsByBuildingAndFloor(b.getId(), currentMax);
+        List<Room> roomsOnTopFloor = masterDataService.getRoomsByBuildingAndFloor(b.getId(), currentMax);
         if (!roomsOnTopFloor.isEmpty()) {
             JOptionPane.showMessageDialog(this,
-                    "Lantai " + currentMax + " masih memiliki " + roomsOnTopFloor.size() + " ruangan.\n" +
-                            "Hapus seluruh ruangan di lantai tersebut terlebih dahulu sebelum menghapus lantainya.",
+                    "Lantai " + currentMax + " masih memiliki " + roomsOnTopFloor.size() + " ruangan.\nHapus semua ruangan terlebih dahulu.",
                     "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Hapus Lantai " + currentMax + " dari " + b.getName() + "?",
-                "Konfirmasi Hapus Lantai", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                "Hapus Lantai " + currentMax + "?",
+                "Konfirmasi Hapus", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (confirm == JOptionPane.YES_OPTION) {
             int newTotal = currentMax - 1;
-            if (buildingDao.updateTotalFloors(b.getId(), newTotal)) {
+            ServiceResult<Void> ok = masterDataService.updateTotalFloors(b.getId(), newTotal);
+            if (ok.isSuccess()) {
                 b.setTotalFloors(newTotal);
                 isUpdatingCombos = true;
                 cbFloor.removeAllItems();
@@ -886,6 +880,8 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 onFloorChanged();
                 JOptionPane.showMessageDialog(this, "Lantai " + currentMax + " berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
+            } else {
+                JOptionPane.showMessageDialog(this, ok.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -896,26 +892,27 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         int floorNum = getSelectedFloorNumber();
 
         JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle("Pilih Gambar Blueprint Denah untuk " + b.getName() + " Lantai " + floorNum);
+        fileChooser.setDialogTitle("Pilih Blueprint (" + b.getName() + " Lantai " + floorNum + ")");
         int res = fileChooser.showOpenDialog(this);
         if (res == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
             String path = selectedFile.getAbsolutePath();
 
-            if (floorPlanDao.saveFloorPlanImage(b.getId(), floorNum, path)) {
+            ServiceResult<Void> ok = masterDataService.saveFloorPlanImage(b.getId(), floorNum, path);
+            if (ok.isSuccess()) {
                 floorCanvas.loadFloorImage(path);
                 lblBlueprintStatus.setText("Kustom");
-                lblBlueprintStatus.setToolTipText("File blueprint: " + selectedFile.getName());
-                btnBlueprintMenu.setToolTipText("Blueprint denah: " + selectedFile.getName());
+                lblBlueprintStatus.setToolTipText("File: " + selectedFile.getName());
+                btnBlueprintMenu.setToolTipText("Blueprint: " + selectedFile.getName());
                 lblBlueprintStatus.setBackground(new Color(224, 242, 254));
                 lblBlueprintStatus.setForeground(new Color(3, 105, 161));
                 JOptionPane.showMessageDialog(this,
-                        "✅ Gambar blueprint denah berhasil diperbarui untuk " + b.getName() + " Lantai " + floorNum + "!",
-                        "Blueprint Berhasil Disimpan",
+                        "Blueprint berhasil diperbarui.",
+                        "Sukses",
                         JOptionPane.INFORMATION_MESSAGE);
                 if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
             } else {
-                JOptionPane.showMessageDialog(this, "Gagal menyimpan path gambar blueprint.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, ok.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -928,14 +925,14 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         String defaultImg = (b.getId() == 3)
                 ? (floorNum == 2 ? "images/kampus2_lantai_2.png" : (floorNum == 3 ? "images/kampus2_lantai_3.png" : "images/kampus2_lantai_1.png"))
                 : ((b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png");
-        floorPlanDao.saveFloorPlanImage(b.getId(), floorNum, defaultImg);
+        masterDataService.saveFloorPlanImage(b.getId(), floorNum, defaultImg);
         floorCanvas.loadFloorImage(defaultImg);
         lblBlueprintStatus.setText("Standar");
-        lblBlueprintStatus.setToolTipText("Menggunakan blueprint standar bawaan");
-        btnBlueprintMenu.setToolTipText("Blueprint denah: Standar");
+        lblBlueprintStatus.setToolTipText("Blueprint standar");
+        btnBlueprintMenu.setToolTipText("Blueprint: Standar");
         lblBlueprintStatus.setBackground(new Color(241, 245, 249));
         lblBlueprintStatus.setForeground(new Color(100, 116, 139));
-        JOptionPane.showMessageDialog(this, "Blueprint denah direset ke gambar bawaan standar.", "Reset Berhasil", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, "Blueprint direset ke standar.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
         if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
     }
 
@@ -1024,15 +1021,12 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 return;
             }
 
-            // Check duplicate code
-            List<Room> existing = roomDao.getRoomsByBuildingId(b.getId());
-            for (Room r : existing) {
-                if (r.getCode().equalsIgnoreCase(code)) {
-                    JOptionPane.showMessageDialog(this,
-                            "Kode ruangan '" + code + "' sudah digunakan oleh ruangan lain di gedung ini!\nSilakan gunakan kode ruangan yang unik.",
-                            "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
+            // Check duplicate code via MasterDataService
+            if (!masterDataService.isRoomCodeUnique(b.getId(), 0, code)) {
+                JOptionPane.showMessageDialog(this,
+                        "Kode ruangan '" + code + "' sudah digunakan oleh ruangan lain di gedung ini!\nSilakan gunakan kode ruangan yang unik.",
+                        "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
+                return;
             }
 
             int imgW = (floorCanvas != null && floorCanvas.getFloorImage() != null) ? floorCanvas.getFloorImage().getWidth() : 1100;
@@ -1042,12 +1036,13 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
             Room newRoom = new Room(b.getId(), code, name, floorNum, (Integer) spCap.getValue(),
                     (String) cbType.getSelectedItem(), txtFac.getText().trim(), posX, posY, 180, 150);
 
-            if (roomDao.addRoom(newRoom)) {
+            ServiceResult<Room> addRes = masterDataService.addRoom(newRoom);
+            if (addRes.isSuccess()) {
                 JOptionPane.showMessageDialog(this, "Ruangan " + code + " berhasil ditambahkan!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 onFloorChanged();
                 if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
             } else {
-                JOptionPane.showMessageDialog(this, "Gagal menambahkan ruangan.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, addRes.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -1063,19 +1058,16 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         int floorNum = getSelectedFloorNumber();
 
         String newCode = JOptionPane.showInputDialog(this,
-                "Duplikasi Ruangan [" + activeRoom.getCode() + "]\nMasukkan kode untuk ruangan baru:",
+                "Kode ruangan baru:",
                 activeRoom.getCode() + "-COPY");
         if (newCode == null || newCode.trim().isEmpty()) return;
 
-        // Check duplicate code
-        List<Room> existing = roomDao.getRoomsByBuildingId(b.getId());
-        for (Room r : existing) {
-            if (r.getCode().equalsIgnoreCase(newCode.trim())) {
-                JOptionPane.showMessageDialog(this,
-                        "Kode ruangan '" + newCode.trim() + "' sudah ada di gedung ini!",
-                        "Peringatan", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
+        // Check duplicate code via MasterDataService
+        if (!masterDataService.isRoomCodeUnique(b.getId(), 0, newCode.trim())) {
+            JOptionPane.showMessageDialog(this,
+                    "Kode ruangan '" + newCode.trim() + "' sudah digunakan.",
+                    "Peringatan", JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
         int newX = Math.min(1000, activeRoom.getPosX() + 30);
@@ -1095,41 +1087,43 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 activeRoom.getHeight()
         );
 
-        if (roomDao.addRoom(dup)) {
-            JOptionPane.showMessageDialog(this, "Ruangan " + newCode.trim() + " berhasil diduplikasi!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+        ServiceResult<Room> dupRes = masterDataService.addRoom(dup);
+        if (dupRes.isSuccess()) {
+            JOptionPane.showMessageDialog(this, "Ruangan " + newCode.trim() + " berhasil diduplikasi.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
             onFloorChanged();
             if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
         } else {
-            JOptionPane.showMessageDialog(this, "Gagal menduplikasi ruangan.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, dupRes.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void handleDeleteRoom() {
         if (activeRoom == null) {
-            JOptionPane.showMessageDialog(this, "Pilih salah satu ruangan terlebih dahulu!", "Info", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Pilih ruangan terlebih dahulu.", "Info", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Apakah Anda yakin ingin menghapus ruangan [" + activeRoom.getCode() + " - " + activeRoom.getName() + "]?",
-                "Konfirmasi Hapus Ruangan",
+                "Hapus ruangan " + activeRoom.getCode() + "?",
+                "Hapus Ruangan",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            if (roomDao.deleteRoom(activeRoom.getId())) {
+            ServiceResult<Void> delRes = masterDataService.deleteRoom(activeRoom.getId());
+            if (delRes.isSuccess()) {
                 JOptionPane.showMessageDialog(this, "Ruangan berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
                 onFloorChanged();
                 if (onLayoutSavedCallback != null) onLayoutSavedCallback.run();
             } else {
-                JOptionPane.showMessageDialog(this, "Gagal menghapus ruangan.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, delRes.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
 
     private void handleSaveLayoutToDb() {
         if (currentRooms == null || currentRooms.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Tidak ada ruangan di lantai ini untuk disimpan.", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Tidak ada ruangan untuk disimpan.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -1138,23 +1132,22 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
 
         boolean allOk = true;
         for (Room r : currentRooms) {
-            boolean ok = roomDao.updateRoomCoordinates(r.getId(), r.getPosX(), r.getPosY(), r.getWidth(), r.getHeight());
-            if (!ok) allOk = false;
+            ServiceResult<Void> ok = masterDataService.updateRoomCoordinates(r.getId(), r.getPosX(), r.getPosY(), r.getWidth(), r.getHeight());
+            if (!ok.isSuccess()) allOk = false;
         }
 
         if (allOk) {
             markUnsavedChanges(false);
             JOptionPane.showMessageDialog(this,
-                    "✅ Posisi koordinat layout denah (" + b.getName() + " — Lantai " + floorNum + ") berhasil disimpan permanen!\n" +
-                            "Perubahan langsung diterapkan secara real-time pada tampilan denah mahasiswa dan admin.",
-                    "Layout Berhasil Disimpan",
+                    "Layout denah berhasil disimpan.",
+                    "Sukses",
                     JOptionPane.INFORMATION_MESSAGE);
 
             if (onLayoutSavedCallback != null) {
                 onLayoutSavedCallback.run();
             }
         } else {
-            JOptionPane.showMessageDialog(this, "Terjadi kesalahan saat menyimpan sebagian koordinat.", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Gagal menyimpan koordinat ruangan.", "Kesalahan", JOptionPane.ERROR_MESSAGE);
         }
     }
 

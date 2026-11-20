@@ -120,7 +120,7 @@ public class LoginDialog extends JDialog {
         lblTitle.setFont(new Font("SansSerif", Font.BOLD, 22));
         lblTitle.setForeground(Color.WHITE);
 
-        JLabel lblSubtitle = new JLabel("Sistem Manajemen & Reservasi Ruangan Kuliah Multi-Kampus");
+        JLabel lblSubtitle = new JLabel("Sistem Manajemen & Reservasi Ruangan");
         lblSubtitle.setFont(new Font("SansSerif", Font.PLAIN, 12));
         lblSubtitle.setForeground(new Color(148, 163, 184));
 
@@ -137,7 +137,7 @@ public class LoginDialog extends JDialog {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setOpaque(false);
 
-        JLabel lblSection = new JLabel("Pilih Akun Demo (Masuk Instan):");
+        JLabel lblSection = new JLabel("Pilih Akun Demo:");
         lblSection.setFont(new Font("SansSerif", Font.BOLD, 13));
         lblSection.setForeground(new Color(30, 41, 59));
         lblSection.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -151,7 +151,7 @@ public class LoginDialog extends JDialog {
                 "mahasiswa",
                 "123",
                 "Muhamad Nur Akbar (NIM: 250111019)",
-                "Cek denah real-time, lihat ruangan kosong/terpakai, dan ajukan booking kuliah.",
+                "Cek denah dan ajukan peminjaman ruangan.",
                 new Color(2, 132, 199),
                 new Color(240, 249, 255)
         ));
@@ -164,7 +164,7 @@ public class LoginDialog extends JDialog {
                 "sekdek",
                 "123",
                 "Ibu Nurul Hidayah, S.Kom.",
-                "Validasi permohonan mahasiswa dan kelola master jadwal tetap dekanat.",
+                "Validasi pengajuan dan kelola jadwal.",
                 new Color(124, 58, 237),
                 new Color(245, 243, 255)
         ));
@@ -177,7 +177,7 @@ public class LoginDialog extends JDialog {
                 "admin",
                 "123",
                 "Bpk. Rahmat Santoso",
-                "Approval final, kelola multi-kampus & gedung, serta editor visual layout denah.",
+                "Approval akhir dan kelola master data.",
                 new Color(5, 150, 105),
                 new Color(236, 253, 245)
         ));
@@ -218,7 +218,7 @@ public class LoginDialog extends JDialog {
         card.add(centerPanel, BorderLayout.CENTER);
 
         // East: Quick Button
-        JButton btnQuickLogin = new JButton("Gunakan ➔");
+        JButton btnQuickLogin = new JButton("Pilih ➔");
         btnQuickLogin.setFont(new Font("SansSerif", Font.BOLD, 11));
         btnQuickLogin.setBackground(primaryColor);
         btnQuickLogin.setForeground(Color.WHITE);
@@ -277,7 +277,7 @@ public class LoginDialog extends JDialog {
         form.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Username
-        JLabel lblUser = new JLabel("Username Pengguna:");
+        JLabel lblUser = new JLabel("Username:");
         lblUser.setFont(new Font("SansSerif", Font.BOLD, 12));
         lblUser.setForeground(new Color(51, 65, 85));
         lblUser.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -293,7 +293,7 @@ public class LoginDialog extends JDialog {
         form.add(Box.createVerticalStrut(10));
 
         // Password
-        JLabel lblPass = new JLabel("Kata Sandi (Password):");
+        JLabel lblPass = new JLabel("Password:");
         lblPass.setFont(new Font("SansSerif", Font.BOLD, 12));
         lblPass.setForeground(new Color(51, 65, 85));
         lblPass.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -309,7 +309,7 @@ public class LoginDialog extends JDialog {
         form.add(Box.createVerticalStrut(6));
 
         // Show password checkbox
-        chkShowPassword = new JCheckBox("Tampilkan Kata Sandi");
+        chkShowPassword = new JCheckBox("Tampilkan password");
         chkShowPassword.setFont(new Font("SansSerif", Font.PLAIN, 11));
         chkShowPassword.setOpaque(false);
         chkShowPassword.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -334,7 +334,7 @@ public class LoginDialog extends JDialog {
         form.add(Box.createVerticalStrut(8));
 
         // Submit Button
-        JButton btnLogin = new JButton("🔐 Masuk ke Sistem");
+        JButton btnLogin = new JButton("Masuk");
         btnLogin.setFont(new Font("SansSerif", Font.BOLD, 13));
         btnLogin.setBackground(new Color(37, 99, 235)); // Royal Blue
         btnLogin.setForeground(Color.WHITE);
@@ -370,7 +370,7 @@ public class LoginDialog extends JDialog {
         footer.setBackground(new Color(241, 245, 249));
         footer.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
 
-        JLabel lbl = new JLabel("CampusRoom v1.2 — Sistem Manajemen & Reservasi Ruangan Terpadu");
+        JLabel lbl = new JLabel("CampusRoom — Sistem Manajemen & Reservasi Ruangan");
         lbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
         lbl.setForeground(new Color(100, 116, 139));
         footer.add(lbl);
@@ -380,13 +380,13 @@ public class LoginDialog extends JDialog {
 
     private void performLogin(String username, String password) {
         if (username.isEmpty()) {
-            lblError.setText("⚠️ Username tidak boleh kosong!");
+            lblError.setText("Username tidak boleh kosong.");
             txtUsername.requestFocus();
             return;
         }
 
         if (password.isEmpty()) {
-            lblError.setText("⚠️ Password tidak boleh kosong!");
+            lblError.setText("Password tidak boleh kosong.");
             txtPassword.requestFocus();
             return;
         }
@@ -400,7 +400,7 @@ public class LoginDialog extends JDialog {
                 callback.onLoginSuccess(user);
             }
         } else {
-            lblError.setText("❌ Username atau password salah! Silakan coba lagi.");
+            lblError.setText("Username atau password salah.");
         }
     }
 }

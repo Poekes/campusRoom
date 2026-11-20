@@ -27,7 +27,7 @@ public class RoomDetailDialog extends JDialog {
         title.setFont(new Font("SansSerif", Font.BOLD, 16));
         title.setForeground(Color.WHITE);
 
-        JLabel status = new JLabel(isAvail ? "🟢 STATUS: KOSONG / TERSEDIA" : "🔴 STATUS: TERPAKAI / SUDAH DIPAKAI");
+        JLabel status = new JLabel(isAvail ? "🟢 Ruangan Tersedia" : "🔴 Ruangan Terpakai");
         status.setFont(new Font("SansSerif", Font.BOLD, 12));
         status.setForeground(isAvail ? new Color(167, 243, 208) : new Color(254, 202, 202));
 
@@ -39,12 +39,12 @@ public class RoomDetailDialog extends JDialog {
         JPanel contentPanel = new JPanel(new GridLayout(6, 1, 8, 8));
         contentPanel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
 
-        contentPanel.add(createDetailRow("Kapasitas Mahasiswa:", room.getCapacity() + " Kursi / Orang"));
-        contentPanel.add(createDetailRow("Tipe Ruangan:", room.getRoomType()));
+        contentPanel.add(createDetailRow("Kapasitas:", room.getCapacity() + " orang"));
+        contentPanel.add(createDetailRow("Tipe:", room.getRoomType()));
         contentPanel.add(createDetailRow("Lantai:", "Lantai " + room.getFloor()));
-        contentPanel.add(createDetailRow("Fasilitas Tersedia:", room.getFacilities()));
-        contentPanel.add(createDetailRow("Koordinat Layout Denah:", "X: " + room.getPosX() + " px, Y: " + room.getPosY() + " px (" + room.getWidth() + "x" + room.getHeight() + " px)"));
-        contentPanel.add(createDetailRow("Keterangan Penggunaan:", room.getCurrentOccupantInfo()));
+        contentPanel.add(createDetailRow("Fasilitas:", room.getFacilities()));
+        contentPanel.add(createDetailRow("Posisi:", "X: " + room.getPosX() + ", Y: " + room.getPosY() + " (" + room.getWidth() + "x" + room.getHeight() + " px)"));
+        contentPanel.add(createDetailRow("Status:", room.getCurrentOccupantInfo()));
 
         add(contentPanel, BorderLayout.CENTER);
 
@@ -57,7 +57,7 @@ public class RoomDetailDialog extends JDialog {
         footerPanel.add(btnClose);
 
         if (isAvail) {
-            JButton btnBook = new JButton("Ajukan Booking Ruangan Ini");
+            JButton btnBook = new JButton("Ajukan Booking");
             btnBook.setBackground(new Color(16, 185, 129));
             btnBook.setForeground(Color.WHITE);
             btnBook.setFont(new Font("SansSerif", Font.BOLD, 12));

@@ -1,8 +1,9 @@
 package com.campusroom.ui;
 
-import com.campusroom.dao.RoomDao;
 import com.campusroom.model.Building;
 import com.campusroom.model.Room;
+import com.campusroom.service.MasterDataService;
+import com.campusroom.service.ServiceResult;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -21,7 +22,7 @@ public class RoomInspectorDialog extends JDialog {
     private final Room room;
     private final Building building;
     private final int floor;
-    private final RoomDao roomDao = new RoomDao();
+    private final MasterDataService masterDataService = new MasterDataService();
     private final Runnable onSaveCallback;
     private final Runnable onDeleteCallback;
     private final Runnable onDuplicateCallback;
@@ -450,26 +451,23 @@ public class RoomInspectorDialog extends JDialog {
         String name = txtName.getText().trim();
 
         if (code.isEmpty() || name.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Kode dan Nama Ruangan tidak boleh kosong!", "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Kode dan nama ruangan wajib diisi.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int cap = ((Number) spCapacity.getValue()).intValue();
         if (cap <= 0) {
-            JOptionPane.showMessageDialog(this, "Kapasitas ruangan harus lebih besar dari 0!", "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Kapasitas ruangan harus lebih dari 0.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        // Validate uniqueness of room code within building
+        // Validate uniqueness of room code within building via MasterDataService
         if (building != null) {
-            List<Room> existing = roomDao.getRoomsByBuildingId(building.getId());
-            for (Room r : existing) {
-                if (r.getId() != room.getId() && r.getCode().equalsIgnoreCase(code)) {
-                    JOptionPane.showMessageDialog(this,
-                            "Kode ruangan '" + code + "' sudah digunakan oleh ruangan lain di gedung ini!\nSilakan gunakan kode ruangan yang unik.",
-                            "Validasi Gagal", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
+            if (!masterDataService.isRoomCodeUnique(building.getId(), room.getId(), code)) {
+                JOptionPane.showMessageDialog(this,
+                        "Kode ruangan '" + code + "' sudah digunakan.",
+                        "Peringatan", JOptionPane.WARNING_MESSAGE);
+                return;
             }
         }
 
@@ -491,9 +489,9 @@ public class RoomInspectorDialog extends JDialog {
         updated.setAvailable(room.isAvailable());
         updated.setCurrentOccupantInfo(room.getCurrentOccupantInfo());
 
-        // Update database
-        boolean ok = roomDao.updateRoom(updated);
-        if (ok) {
+        // Update database via MasterDataService
+        ServiceResult<Room> result = masterDataService.updateRoom(updated);
+        if (result.isSuccess()) {
             // Apply changes to in-memory room object safely
             room.setCode(updated.getCode());
             room.setName(updated.getName());
@@ -510,29 +508,30 @@ public class RoomInspectorDialog extends JDialog {
                 onSaveCallback.run();
             }
             JOptionPane.showMessageDialog(getParent(),
-                    "✅ Properti & koordinat ruangan " + code + " berhasil disimpan!",
+                    "Data ruangan " + code + " berhasil disimpan.",
                     "Sukses", JOptionPane.INFORMATION_MESSAGE);
         } else {
-            JOptionPane.showMessageDialog(this, "Gagal menyimpan perubahan ke database.", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, result.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void handleDelete() {
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Apakah Anda yakin ingin menghapus ruangan [" + room.getCode() + " - " + room.getName() + "]?",
-                "Konfirmasi Hapus Ruangan",
+                "Hapus ruangan " + room.getCode() + "?",
+                "Konfirmasi Hapus",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            if (roomDao.deleteRoom(room.getId())) {
+            ServiceResult<Void> result = masterDataService.deleteRoom(room.getId());
+            if (result.isSuccess()) {
                 dispose();
                 if (onDeleteCallback != null) {
                     onDeleteCallback.run();
                 }
                 JOptionPane.showMessageDialog(getParent(), "Ruangan berhasil dihapus.", "Sukses", JOptionPane.INFORMATION_MESSAGE);
             } else {
-                JOptionPane.showMessageDialog(this, "Gagal menghapus ruangan.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
