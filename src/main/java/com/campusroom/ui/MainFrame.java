@@ -12,6 +12,8 @@ import com.campusroom.model.User;
 import com.campusroom.service.AuthService;
 import com.campusroom.service.AvailabilityService;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -59,6 +61,12 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     private JComboBox<String> cbSlot;
     private JButton btnRefreshStatus;
 
+    // Zoom Controls
+    private JLabel lblZoomLevel;
+    private JButton btnZoomIn;
+    private JButton btnZoomOut;
+    private JButton btnResetZoom;
+
     // Card Layout Views
     private CardLayout cardLayout;
     private JPanel cardPanel;
@@ -69,8 +77,18 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     private AdminPanel adminPanel;
     private LayoutEditorPanel layoutEditorPanel;
 
-    // Sidebar Info in Denah Tab
+    // Detail Ruangan Inspector (Dock Kanan Sleek & Non-Intrusive)
+    public static final int INSPECTOR_WIDTH = 315;
+    public static final int INSPECTOR_COLLAPSED_WIDTH = 0;
+    public static final int INSPECTOR_EXPANDED_WIDTH = 315;
+
     private JPanel roomDetailSidebar;
+    private CardLayout inspectorBodyCardLayout;
+    private JPanel inspectorBodyContainer;
+    private JButton btnCloseInspector;
+    private JButton btnToggleInspector;
+    private boolean isInspectorVisible = false;
+
     private JLabel lblSidebarRoomTitle;
     private JLabel lblSidebarStatusBanner;
     private JLabel lblSidebarCapacity;
@@ -173,7 +191,10 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         cardPanel.add(adminPanel.getRoomManagementPanel(), "adminRooms");
 
         // View 8: Visual Layout Editor
-        layoutEditorPanel = new LayoutEditorPanel(() -> refreshAvailability());
+        layoutEditorPanel = new LayoutEditorPanel(() -> {
+            syncLocationFromEditor();
+            refreshAvailability();
+        });
         cardPanel.add(layoutEditorPanel, "layoutEditor");
 
         mainContentPanel.add(cardPanel, BorderLayout.CENTER);
@@ -185,7 +206,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
         updateRoleView(AuthService.getInstance().getCurrentUser());
 
-        // Keyboard shortcut: Ctrl + B (atau Cmd + B) untuk buka / ciutkan sidebar
+        // Keyboard shortcut: Ctrl + B (atau Cmd + B) untuk buka / ciutkan sidebar navigasi
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_B, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
                 "toggleSidebar"
@@ -196,6 +217,18 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 if (sidebarNav != null) {
                     sidebarNav.toggleCollapse();
                 }
+            }
+        });
+
+        // Keyboard shortcut: Ctrl + I (atau Cmd + I) untuk buka / ciutkan inspector ruangan (Left Bar)
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_I, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+                "toggleInspector"
+        );
+        getRootPane().getActionMap().put("toggleInspector", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                toggleInspector();
             }
         });
     }
@@ -325,115 +358,127 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     }
 
     /**
-     * Tampilan Denah Visual: Menyertakan Card Filter khusus di atas canvas denah,
-     * canvas denah di tengah, dan inspector detail ruangan di kanan.
+     * Tampilan Denah Visual:
+     * - Ribbon Bar Minimalis di bagian atas (North)
+     * - Canvas Denah Luas di bagian tengah (Center)
+     * - Detail Ruangan Inspector di dock kanan (East), tertutup rapi secara default dan
+     *   terbuka mulus saat ruangan diklik atau tombol Detail ditekan.
      */
     private JPanel createFloorPlanTab() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
         panel.setBackground(ModernUIHelper.BG_PAGE);
 
-        // 1. North: Modern Filter Toolbar Card khusus denah
+        // 1. North: Modern Single-Row Filter Ribbon
         panel.add(createFloorPlanFilterCard(), BorderLayout.NORTH);
 
         // 2. Center: Canvas Denah
         floorCanvas = new InteractiveFloorPlanPanel();
         floorCanvas.setFloorPlanListener(this);
+        floorCanvas.addZoomChangeListener(zoom -> {
+            if (lblZoomLevel != null) {
+                lblZoomLevel.setText((int) Math.round(zoom * 100) + "%");
+            }
+        });
         JScrollPane canvasScroll = new JScrollPane(floorCanvas);
         canvasScroll.setBorder(BorderFactory.createLineBorder(ModernUIHelper.BORDER_LIGHT));
+        canvasScroll.getVerticalScrollBar().setUnitIncrement(16);
+        canvasScroll.getHorizontalScrollBar().setUnitIncrement(16);
         panel.add(canvasScroll, BorderLayout.CENTER);
 
-        // 3. East: Detail Ruangan Inspector
+        // 3. East: Detail Ruangan Inspector (Dock Kanan Rapi & Non-Intrusive)
         panel.add(createRoomDetailSidebar(), BorderLayout.EAST);
 
         return panel;
     }
 
     private JPanel createFloorPlanFilterCard() {
-        JPanel card = new JPanel(new GridLayout(2, 1, 0, 8));
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(ModernUIHelper.BORDER_LIGHT, 1),
-                BorderFactory.createEmptyBorder(8, 14, 8, 14)
-        ));
+        JPanel card = new JPanel(new BorderLayout(0, 8)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(Color.WHITE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
+                g2.setColor(ModernUIHelper.BORDER_LIGHT);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 14, 14);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(8, 12, 8, 12));
 
-        // Baris 1: Filter Lokasi (Kampus, Gedung, Lantai) di Kiri, Tombol Aksi di Kanan
-        JPanel row1 = new JPanel(new BorderLayout(10, 0));
+        // --- ROW 1: Filter Capsules & Main Actions ---
+        JPanel row1 = new JPanel(new BorderLayout(8, 0));
         row1.setOpaque(false);
 
-        JPanel locationPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        locationPanel.setOpaque(false);
+        JPanel row1Left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        row1Left.setOpaque(false);
 
-        JLabel lblC = new JLabel("Kampus:");
-        lblC.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblC.setForeground(new Color(71, 85, 105));
-        locationPanel.add(lblC);
+        // Kapsul 1: Lokasi Kampus -> Gedung -> Lantai
+        JPanel locCapsule = ModernUIHelper.createFilterCapsule(new FlowLayout(FlowLayout.LEFT, 4, 1));
+
+        JLabel lblLocTag = new JLabel("Lokasi:");
+        lblLocTag.setFont(ModernUIHelper.fontBold(10));
+        lblLocTag.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        locCapsule.add(lblLocTag);
 
         cbCampus = new JComboBox<>();
-        cbCampus.setPreferredSize(new Dimension(135, 28));
-        cbCampus.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cbCampus.setPreferredSize(new Dimension(92, 26));
+        ModernUIHelper.styleComboBox(cbCampus);
         cbCampus.addActionListener(e -> onCampusSelected());
-        locationPanel.add(cbCampus);
+        locCapsule.add(cbCampus);
 
-        JLabel lblB = new JLabel("Gedung:");
-        lblB.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblB.setForeground(new Color(71, 85, 105));
-        locationPanel.add(lblB);
+        JLabel sep1 = new JLabel("›");
+        sep1.setFont(ModernUIHelper.fontBold(11));
+        sep1.setForeground(ModernUIHelper.TEXT_MUTED);
+        locCapsule.add(sep1);
 
         cbBuilding = new JComboBox<>();
-        cbBuilding.setPreferredSize(new Dimension(135, 28));
-        cbBuilding.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cbBuilding.setPreferredSize(new Dimension(88, 26));
+        ModernUIHelper.styleComboBox(cbBuilding);
         cbBuilding.addActionListener(e -> onBuildingSelected());
-        locationPanel.add(cbBuilding);
+        locCapsule.add(cbBuilding);
 
-        JLabel lblF = new JLabel("Lantai:");
-        lblF.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblF.setForeground(new Color(71, 85, 105));
-        locationPanel.add(lblF);
+        JLabel sep2 = new JLabel("›");
+        sep2.setFont(ModernUIHelper.fontBold(11));
+        sep2.setForeground(ModernUIHelper.TEXT_MUTED);
+        locCapsule.add(sep2);
 
         cbFloor = new JComboBox<>();
-        cbFloor.setPreferredSize(new Dimension(85, 28));
-        cbFloor.setFont(new Font("SansSerif", Font.BOLD, 11));
+        cbFloor.setPreferredSize(new Dimension(65, 26));
+        ModernUIHelper.styleComboBox(cbFloor);
+        cbFloor.setFont(ModernUIHelper.fontBold(11));
         cbFloor.addActionListener(e -> {
             if (!isUpdatingFloorCombo) refreshAvailability();
         });
-        locationPanel.add(cbFloor);
+        locCapsule.add(cbFloor);
 
-        row1.add(locationPanel, BorderLayout.WEST);
+        row1Left.add(locCapsule);
 
-        // Kanan Baris 1: Tombol Cek Jadwal Realtime
-        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        actionPanel.setOpaque(false);
+        // Kapsul 2: Tanggal & Sesi Waktu
+        JPanel scheduleCapsule = ModernUIHelper.createFilterCapsule(new FlowLayout(FlowLayout.LEFT, 4, 1));
 
-        btnRefreshStatus = ModernUIHelper.createStyledButton("Cek Jadwal", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
-        btnRefreshStatus.setPreferredSize(new Dimension(105, 28));
-        btnRefreshStatus.addActionListener(e -> refreshAvailability());
-        actionPanel.add(btnRefreshStatus);
-
-        row1.add(actionPanel, BorderLayout.EAST);
-        card.add(row1);
-
-        // Baris 2: Filter Waktu (Tanggal, Sesi) di Kiri, Legenda & Statistik Denah di Kanan
-        JPanel row2 = new JPanel(new BorderLayout(10, 0));
-        row2.setOpaque(false);
-
-        JPanel timePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        timePanel.setOpaque(false);
-
-        JLabel lblD = new JLabel("Tanggal:");
-        lblD.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblD.setForeground(new Color(71, 85, 105));
-        timePanel.add(lblD);
+        JLabel lblDateTag = new JLabel("Tgl:");
+        lblDateTag.setFont(ModernUIHelper.fontBold(10));
+        lblDateTag.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        scheduleCapsule.add(lblDateTag);
 
         txtDate = new JTextField(LocalDate.now().toString(), 8);
-        txtDate.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        txtDate.setPreferredSize(new Dimension(85, 28));
-        timePanel.add(txtDate);
+        ModernUIHelper.styleTextField(txtDate);
+        txtDate.setPreferredSize(new Dimension(70, 26));
+        scheduleCapsule.add(txtDate);
 
-        JLabel lblS = new JLabel("Sesi Kuliah:");
-        lblS.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblS.setForeground(new Color(71, 85, 105));
-        timePanel.add(lblS);
+        JSeparator vSep = new JSeparator(SwingConstants.VERTICAL);
+        vSep.setPreferredSize(new Dimension(1, 16));
+        vSep.setForeground(ModernUIHelper.BORDER_LIGHT);
+        scheduleCapsule.add(vSep);
+
+        JLabel lblSlotTag = new JLabel("Sesi:");
+        lblSlotTag.setFont(ModernUIHelper.fontBold(10));
+        lblSlotTag.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        scheduleCapsule.add(lblSlotTag);
 
         String[] slots = {
                 "08:00 - 10:30 (Sesi Pagi 1)",
@@ -443,30 +488,111 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 "18:00 - 20:30 (Sesi Malam)"
         };
         cbSlot = new JComboBox<>(slots);
-        cbSlot.setPreferredSize(new Dimension(150, 28));
-        cbSlot.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cbSlot.setPreferredSize(new Dimension(100, 26));
+        ModernUIHelper.styleComboBox(cbSlot);
         cbSlot.addActionListener(e -> refreshAvailability());
-        timePanel.add(cbSlot);
+        scheduleCapsule.add(cbSlot);
 
-        row2.add(timePanel, BorderLayout.WEST);
+        row1Left.add(scheduleCapsule);
 
-        // Kanan Baris 2: Legenda & Stats dengan Pill Badges Modern
-        JPanel legendStatsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        legendStatsPanel.setOpaque(false);
+        row1.add(row1Left, BorderLayout.CENTER);
 
-        JLabel leg1 = createPillBadge("Kosong", new Color(16, 185, 129), new Color(220, 252, 231), new Color(22, 101, 52));
+        // Aksi Kanan: Tombol Cek Jadwal & Toggle Detail Ruangan
+        JPanel row1Right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        row1Right.setOpaque(false);
+
+        btnRefreshStatus = ModernUIHelper.createStyledButton("Cek Jadwal", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
+        btnRefreshStatus.setPreferredSize(new Dimension(92, 28));
+        btnRefreshStatus.setBorder(new EmptyBorder(4, 8, 4, 8));
+        btnRefreshStatus.addActionListener(e -> refreshAvailability());
+        row1Right.add(btnRefreshStatus);
+
+        btnToggleInspector = ModernUIHelper.createStyledButton("Detail Ruangan", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
+        btnToggleInspector.setPreferredSize(new Dimension(102, 28));
+        btnToggleInspector.setBorder(new EmptyBorder(4, 8, 4, 8));
+        btnToggleInspector.setToolTipText("Buka / Tutup Inspector Detail Ruangan (Ctrl+I)");
+        btnToggleInspector.addActionListener(e -> toggleInspector());
+        row1Right.add(btnToggleInspector);
+
+        row1.add(row1Right, BorderLayout.EAST);
+        card.add(row1, BorderLayout.NORTH);
+
+        // --- ROW 2: Canvas Zoom Toolbar & Live Floor Statistics ---
+        JPanel row2 = new JPanel(new BorderLayout(8, 0));
+        row2.setOpaque(false);
+
+        // Kiri: Zoom Controller Group
+        JPanel zoomGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        zoomGroup.setOpaque(false);
+
+        JLabel lblZoomTitle = new JLabel("Zoom:");
+        lblZoomTitle.setFont(ModernUIHelper.fontBold(10));
+        lblZoomTitle.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        zoomGroup.add(lblZoomTitle);
+
+        JPanel zoomPill = ModernUIHelper.createFilterCapsule(new FlowLayout(FlowLayout.CENTER, 2, 1));
+
+        btnZoomOut = ModernUIHelper.createCompactButton("−", Color.WHITE, ModernUIHelper.TEXT_DARK, 13, true);
+        btnZoomOut.setPreferredSize(new Dimension(28, 24));
+        btnZoomOut.setToolTipText("Perkecil Denah (Ctrl + Scroll Down)");
+        btnZoomOut.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.zoomOut();
+        });
+        zoomPill.add(btnZoomOut);
+
+        lblZoomLevel = new JLabel("100%", SwingConstants.CENTER);
+        lblZoomLevel.setFont(ModernUIHelper.fontBold(10));
+        lblZoomLevel.setForeground(ModernUIHelper.COLOR_PRIMARY);
+        lblZoomLevel.setPreferredSize(new Dimension(46, 24));
+        lblZoomLevel.setToolTipText("Klik untuk reset ke 100%");
+        lblZoomLevel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        lblZoomLevel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (floorCanvas != null) floorCanvas.resetZoom();
+            }
+        });
+        zoomPill.add(lblZoomLevel);
+
+        btnZoomIn = ModernUIHelper.createCompactButton("+", Color.WHITE, ModernUIHelper.TEXT_DARK, 13, true);
+        btnZoomIn.setPreferredSize(new Dimension(28, 24));
+        btnZoomIn.setToolTipText("Perbesar Denah (Ctrl + Scroll Up)");
+        btnZoomIn.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.zoomIn();
+        });
+        zoomPill.add(btnZoomIn);
+
+        btnResetZoom = ModernUIHelper.createCompactButton("Reset", Color.WHITE, ModernUIHelper.TEXT_SECONDARY, 10, false);
+        btnResetZoom.setPreferredSize(new Dimension(48, 24));
+        btnResetZoom.setToolTipText("Kembalikan ukuran denah ke normal (100%)");
+        btnResetZoom.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.resetZoom();
+        });
+        zoomPill.add(btnResetZoom);
+
+        zoomGroup.add(zoomPill);
+
+        JLabel lblNavHint = new JLabel("• Ctrl + Scroll Mouse untuk Zoom • Drag Klik-Kanan untuk Pan");
+        lblNavHint.setFont(ModernUIHelper.fontPlain(10));
+        lblNavHint.setForeground(ModernUIHelper.TEXT_MUTED);
+        zoomGroup.add(lblNavHint);
+
+        row2.add(zoomGroup, BorderLayout.WEST);
+
+        // Kanan: Legend & Live Floor Status
+        JPanel row2Right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        row2Right.setOpaque(false);
+
+        JLabel leg1 = createPillBadge("Tersedia", new Color(16, 185, 129), new Color(220, 252, 231), new Color(22, 101, 52));
         JLabel leg2 = createPillBadge("Terpakai", new Color(239, 68, 68), new Color(254, 226, 226), new Color(153, 27, 27));
-        JLabel leg3 = createPillBadge("Terpilih", new Color(245, 158, 11), new Color(254, 243, 199), new Color(180, 83, 9));
+        lblFloorStats = createPillBadge("Total: 8 | Kosong: 8", null, new Color(241, 245, 249), ModernUIHelper.COLOR_PRIMARY);
 
-        lblFloorStats = createPillBadge("Total Lt.2: 8 | Kosong: 8 | Terpakai: 0", null, new Color(241, 245, 249), ModernUIHelper.COLOR_PRIMARY);
+        row2Right.add(leg1);
+        row2Right.add(leg2);
+        row2Right.add(lblFloorStats);
 
-        legendStatsPanel.add(leg1);
-        legendStatsPanel.add(leg2);
-        legendStatsPanel.add(leg3);
-        legendStatsPanel.add(lblFloorStats);
-
-        row2.add(legendStatsPanel, BorderLayout.EAST);
-        card.add(row2);
+        row2.add(row2Right, BorderLayout.EAST);
+        card.add(row2, BorderLayout.SOUTH);
 
         return card;
     }
@@ -491,46 +617,83 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 super.paintComponent(g);
             }
         };
-        lbl.setFont(new Font("SansSerif", Font.BOLD, 10));
+        lbl.setFont(ModernUIHelper.fontBold(10));
         lbl.setOpaque(false);
         lbl.setBackground(bg);
         lbl.setForeground(fg);
-        lbl.setBorder(new EmptyBorder(3, dotColor != null ? 18 : 8, 3, 8));
+        lbl.setBorder(new EmptyBorder(4, dotColor != null ? 18 : 10, 4, 10));
         return lbl;
     }
 
     private JPanel createRoomDetailSidebar() {
-        roomDetailSidebar = new JPanel(new BorderLayout(10, 12));
-        roomDetailSidebar.setPreferredSize(new Dimension(285, 500));
-        roomDetailSidebar.setBackground(Color.WHITE);
-        roomDetailSidebar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(ModernUIHelper.BORDER_LIGHT, 1),
-                new EmptyBorder(16, 16, 16, 16)
-        ));
+        roomDetailSidebar = new JPanel(new BorderLayout(0, 10)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(Color.WHITE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.setColor(ModernUIHelper.BORDER_LIGHT);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        roomDetailSidebar.setOpaque(false);
+        roomDetailSidebar.setPreferredSize(new Dimension(isInspectorVisible ? INSPECTOR_WIDTH : 0, 500));
+        roomDetailSidebar.setVisible(isInspectorVisible);
+        roomDetailSidebar.setBorder(new EmptyBorder(14, 16, 14, 16));
 
-        // Header: Badge info + Title + Status Banner
-        JPanel top = new JPanel(new BorderLayout(0, 6));
-        top.setOpaque(false);
+        // 1. Header: Badge + Close (✕) Button
+        JPanel topHeader = new JPanel(new BorderLayout(8, 0));
+        topHeader.setOpaque(false);
 
         JLabel lblBadge = new JLabel("INSPECTOR RUANGAN");
         lblBadge.setFont(new Font("SansSerif", Font.BOLD, 9));
-        lblBadge.setForeground(new Color(100, 116, 139));
-        top.add(lblBadge, BorderLayout.NORTH);
+        lblBadge.setForeground(new Color(79, 70, 229)); // Indigo 600
+        topHeader.add(lblBadge, BorderLayout.WEST);
 
-        JPanel titleBannerCol = new JPanel(new GridLayout(2, 1, 0, 6));
-        titleBannerCol.setOpaque(false);
+        btnCloseInspector = new JButton("✕") {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                if (getModel().isRollover()) {
+                    g2.setColor(new Color(241, 245, 249));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                }
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btnCloseInspector.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnCloseInspector.setForeground(new Color(100, 116, 139));
+        btnCloseInspector.setPreferredSize(new Dimension(24, 24));
+        btnCloseInspector.setFocusPainted(false);
+        btnCloseInspector.setBorderPainted(false);
+        btnCloseInspector.setContentAreaFilled(false);
+        btnCloseInspector.setOpaque(false);
+        btnCloseInspector.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btnCloseInspector.setToolTipText("Tutup Inspector (Ctrl+I)");
+        btnCloseInspector.addActionListener(e -> setInspectorVisible(false));
+        topHeader.add(btnCloseInspector, BorderLayout.EAST);
+
+        // Room Title and Status Banner
+        JPanel titleBox = new JPanel(new GridLayout(2, 1, 0, 6));
+        titleBox.setOpaque(false);
+        titleBox.setBorder(new EmptyBorder(8, 0, 8, 0));
 
         lblSidebarRoomTitle = new JLabel("Pilih Ruangan di Denah", JLabel.LEFT);
         lblSidebarRoomTitle.setFont(new Font("SansSerif", Font.BOLD, 14));
         lblSidebarRoomTitle.setForeground(ModernUIHelper.TEXT_DARK);
 
-        lblSidebarStatusBanner = new JLabel("Klik salah satu kotak ruangan di denah", JLabel.CENTER) {
+        lblSidebarStatusBanner = new JLabel("Klik salah satu ruangan di denah", JLabel.CENTER) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
                 g2.dispose();
                 super.paintComponent(g);
             }
@@ -541,43 +704,57 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         lblSidebarStatusBanner.setForeground(new Color(100, 116, 139));
         lblSidebarStatusBanner.setBorder(new EmptyBorder(6, 10, 6, 10));
 
-        titleBannerCol.add(lblSidebarRoomTitle);
-        titleBannerCol.add(lblSidebarStatusBanner);
-        top.add(titleBannerCol, BorderLayout.CENTER);
-        roomDetailSidebar.add(top, BorderLayout.NORTH);
+        titleBox.add(lblSidebarRoomTitle);
+        titleBox.add(lblSidebarStatusBanner);
 
-        // Body: Specification Card
-        JPanel cardSpec = new JPanel(new GridLayout(4, 1, 0, 8));
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.setOpaque(false);
+        headerWrapper.add(topHeader, BorderLayout.NORTH);
+        headerWrapper.add(titleBox, BorderLayout.CENTER);
+        roomDetailSidebar.add(headerWrapper, BorderLayout.NORTH);
+
+        // 2. Center: Container dengan CardLayout ("spec" vs "empty")
+        inspectorBodyCardLayout = new CardLayout();
+        inspectorBodyContainer = new JPanel(inspectorBodyCardLayout);
+        inspectorBodyContainer.setOpaque(false);
+
+        // Card 1: Empty State
+        inspectorBodyContainer.add(createInspectorEmptyStatePanel(), "empty");
+
+        // Card 2: Specification Card
+        JPanel cardSpec = new JPanel(new GridLayout(4, 1, 0, 6));
         cardSpec.setBackground(new Color(248, 250, 252));
         cardSpec.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
-                new EmptyBorder(12, 12, 12, 12)
+                new EmptyBorder(10, 12, 10, 12)
         ));
 
-        lblSidebarCapacity = new JLabel("<html><b style='color:#64748b; font-size:9px;'>KAPASITAS</b><br/><span style='color:#334155;'>-</span></html>");
-        lblSidebarFloor = new JLabel("<html><b style='color:#64748b; font-size:9px;'>LOKASI LANTAI</b><br/><span style='color:#334155;'>-</span></html>");
-        lblSidebarFacilities = new JLabel("<html><b style='color:#64748b; font-size:9px;'>FASILITAS</b><br/><span style='color:#334155;'>-</span></html>");
-        lblSidebarOccupant = new JLabel("<html><b style='color:#64748b; font-size:9px;'>STATUS PENGGUNAAN</b><br/><span style='color:#334155;'>-</span></html>");
+        lblSidebarCapacity = new JLabel("<html><b style='color:#64748b; font-size:9px;'>👥 KAPASITAS & TIPE</b><br/><span style='color:#334155;'>-</span></html>");
+        lblSidebarFloor = new JLabel("<html><b style='color:#64748b; font-size:9px;'>📍 LOKASI LANTAI</b><br/><span style='color:#334155;'>-</span></html>");
+        lblSidebarFacilities = new JLabel("<html><b style='color:#64748b; font-size:9px;'>🛠️ FASILITAS RUANGAN</b><br/><span style='color:#334155;'>-</span></html>");
+        lblSidebarOccupant = new JLabel("<html><b style='color:#64748b; font-size:9px;'>📅 PENGGUNAAN SAAT INI</b><br/><span style='color:#334155;'>-</span></html>");
 
         cardSpec.add(lblSidebarCapacity);
         cardSpec.add(lblSidebarFloor);
         cardSpec.add(lblSidebarFacilities);
         cardSpec.add(lblSidebarOccupant);
 
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
-        centerPanel.setOpaque(false);
-        centerPanel.add(cardSpec, BorderLayout.CENTER);
+        JPanel specWrapper = new JPanel(new BorderLayout(0, 8));
+        specWrapper.setOpaque(false);
+        specWrapper.add(cardSpec, BorderLayout.CENTER);
 
         JLabel lblHint = new JLabel("<html><i>* Klik 2x pada kotak denah untuk melihat informasi lengkap.</i></html>");
-        lblHint.setFont(new Font("SansSerif", Font.ITALIC, 10));
+        lblHint.setFont(new Font("SansSerif", Font.ITALIC, 9));
         lblHint.setForeground(new Color(148, 163, 184));
         lblHint.setBorder(new EmptyBorder(4, 2, 0, 2));
-        centerPanel.add(lblHint, BorderLayout.SOUTH);
+        specWrapper.add(lblHint, BorderLayout.SOUTH);
 
-        roomDetailSidebar.add(centerPanel, BorderLayout.CENTER);
+        inspectorBodyContainer.add(specWrapper, "spec");
+        inspectorBodyCardLayout.show(inspectorBodyContainer, (selectedRoom == null) ? "empty" : "spec");
+        roomDetailSidebar.add(inspectorBodyContainer, BorderLayout.CENTER);
 
-        // Action Buttons
-        JPanel bottom = new JPanel(new GridLayout(2, 1, 8, 8));
+        // 3. Bottom Actions
+        JPanel bottom = new JPanel(new GridLayout(2, 1, 6, 6));
         bottom.setOpaque(false);
 
         btnSidebarBook = ModernUIHelper.createStyledButton("Ajukan Booking Ruangan ➔", ModernUIHelper.COLOR_SUCCESS, Color.WHITE, 11, true);
@@ -600,6 +777,93 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         roomDetailSidebar.add(bottom, BorderLayout.SOUTH);
 
         return roomDetailSidebar;
+    }
+
+    private JPanel createInspectorEmptyStatePanel() {
+        JPanel emptyPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(248, 250, 252));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.setColor(new Color(226, 232, 240));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        emptyPanel.setOpaque(false);
+        emptyPanel.setLayout(new BoxLayout(emptyPanel, BoxLayout.Y_AXIS));
+        emptyPanel.setBorder(new EmptyBorder(24, 14, 24, 14));
+
+        JLabel lblIcon = new JLabel("🗺️", JLabel.CENTER);
+        lblIcon.setFont(new Font("SansSerif", Font.PLAIN, 28));
+        lblIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel lblEmptyTitle = new JLabel("Pilih Ruangan di Denah", JLabel.CENTER);
+        lblEmptyTitle.setFont(new Font("SansSerif", Font.BOLD, 12));
+        lblEmptyTitle.setForeground(new Color(51, 65, 85));
+        lblEmptyTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel lblEmptyDesc = new JLabel("<html><center style='color:#64748b; font-size:10px; line-height:140%;'>" +
+                "Klik salah satu kotak ruangan di denah untuk melihat fasilitas, kapasitas, status ketersediaan, dan jadwal sesi perkuliahan." +
+                "</center></html>", JLabel.CENTER);
+        lblEmptyDesc.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel lblShortcutTip = new JLabel("Pintasan: Tekan Ctrl+I untuk buka / tutup", JLabel.CENTER);
+        lblShortcutTip.setFont(new Font("SansSerif", Font.ITALIC, 9));
+        lblShortcutTip.setForeground(new Color(148, 163, 184));
+        lblShortcutTip.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        emptyPanel.add(Box.createVerticalGlue());
+        emptyPanel.add(lblIcon);
+        emptyPanel.add(Box.createVerticalStrut(10));
+        emptyPanel.add(lblEmptyTitle);
+        emptyPanel.add(Box.createVerticalStrut(6));
+        emptyPanel.add(lblEmptyDesc);
+        emptyPanel.add(Box.createVerticalStrut(14));
+        emptyPanel.add(lblShortcutTip);
+        emptyPanel.add(Box.createVerticalGlue());
+
+        return emptyPanel;
+    }
+
+    public void setInspectorVisible(boolean visible) {
+        this.isInspectorVisible = visible;
+        if (roomDetailSidebar != null) {
+            roomDetailSidebar.setVisible(visible);
+            roomDetailSidebar.setPreferredSize(new Dimension(visible ? INSPECTOR_WIDTH : 0, 500));
+            roomDetailSidebar.revalidate();
+            roomDetailSidebar.repaint();
+            if (roomDetailSidebar.getParent() != null) {
+                roomDetailSidebar.getParent().revalidate();
+                roomDetailSidebar.getParent().repaint();
+            }
+        }
+        if (btnToggleInspector != null) {
+            if (visible) {
+                btnToggleInspector.setText("✕ Tutup Detail");
+                btnToggleInspector.setBackground(new Color(238, 242, 255));
+                btnToggleInspector.setForeground(new Color(79, 70, 229));
+            } else {
+                btnToggleInspector.setText("ℹ️ Detail Ruangan");
+                btnToggleInspector.setBackground(new Color(241, 245, 249));
+                btnToggleInspector.setForeground(ModernUIHelper.TEXT_DARK);
+            }
+        }
+    }
+
+    public void setInspectorCollapsed(boolean collapsed) {
+        setInspectorVisible(!collapsed);
+    }
+
+    public boolean isInspectorCollapsed() {
+        return !isInspectorVisible;
+    }
+
+    public void toggleInspector() {
+        setInspectorVisible(!isInspectorVisible);
     }
 
     private JPanel createBottomStatusBar() {
@@ -659,6 +923,8 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 cardLayout.show(cardPanel, "floorPlan");
                 lblBreadcrumbView.setText("Denah Visual Interaktif");
                 lblViewSubtitle.setText("Peta visual ruangan realtime dan status ketersediaan per slot sesi kuliah");
+                syncLocationFromEditor();
+                refreshAvailability();
                 break;
             case SidebarNavigationPanel.NAV_CATALOG:
                 cardLayout.show(cardPanel, "catalog");
@@ -705,6 +971,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 cardLayout.show(cardPanel, "layoutEditor");
                 lblBreadcrumbView.setText("Administrator / Desainer Denah Visual");
                 lblViewSubtitle.setText("Editor tata letak denah interaktif (Toolbar Excalidraw & Inspector Modal)");
+                syncLocationToEditor();
                 break;
         }
     }
@@ -790,6 +1057,87 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
             }
         }
         return 1;
+    }
+
+    public Campus getSelectedCampus() {
+        return (Campus) cbCampus.getSelectedItem();
+    }
+
+    public Building getSelectedBuilding() {
+        return (Building) cbBuilding.getSelectedItem();
+    }
+
+    public int getSelectedFloor() {
+        return getSelectedFloorNumber();
+    }
+
+    public void setSelectedLocation(int campusId, int buildingId, int floorNum) {
+        isUpdatingFloorCombo = true;
+        for (int i = 0; i < cbCampus.getItemCount(); i++) {
+            Campus c = cbCampus.getItemAt(i);
+            if (c != null && c.getId() == campusId) {
+                cbCampus.setSelectedIndex(i);
+                break;
+            }
+        }
+
+        Campus c = (Campus) cbCampus.getSelectedItem();
+        if (c != null) {
+            cbBuilding.removeAllItems();
+            List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+            for (Building b : buildings) {
+                cbBuilding.addItem(b);
+            }
+        }
+
+        for (int i = 0; i < cbBuilding.getItemCount(); i++) {
+            Building b = cbBuilding.getItemAt(i);
+            if (b != null && b.getId() == buildingId) {
+                cbBuilding.setSelectedIndex(i);
+                break;
+            }
+        }
+
+        Building b = (Building) cbBuilding.getSelectedItem();
+        if (b != null) {
+            cbFloor.removeAllItems();
+            int totalFloors = Math.max(1, b.getTotalFloors());
+            for (int i = 1; i <= totalFloors; i++) {
+                cbFloor.addItem("Lantai " + i);
+            }
+        }
+
+        String floorStr = "Lantai " + floorNum;
+        for (int i = 0; i < cbFloor.getItemCount(); i++) {
+            if (floorStr.equals(cbFloor.getItemAt(i))) {
+                cbFloor.setSelectedIndex(i);
+                break;
+            }
+        }
+        isUpdatingFloorCombo = false;
+        refreshAvailability();
+    }
+
+    private void syncLocationFromEditor() {
+        if (layoutEditorPanel != null && layoutEditorPanel.getSelectedCampus() != null && layoutEditorPanel.getSelectedBuilding() != null) {
+            Campus ec = layoutEditorPanel.getSelectedCampus();
+            Building eb = layoutEditorPanel.getSelectedBuilding();
+            int ef = layoutEditorPanel.getSelectedFloor();
+            setSelectedLocation(ec.getId(), eb.getId(), ef);
+        }
+    }
+
+    private void syncLocationToEditor() {
+        if (layoutEditorPanel != null) {
+            Campus mc = (Campus) cbCampus.getSelectedItem();
+            Building mb = (Building) cbBuilding.getSelectedItem();
+            int mf = getSelectedFloorNumber();
+            if (mc != null && mb != null) {
+                layoutEditorPanel.setSelectedLocation(mc.getId(), mb.getId(), mf);
+            } else {
+                layoutEditorPanel.onFloorChanged();
+            }
+        }
     }
 
     public void refreshAvailability() {
@@ -888,17 +1236,27 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
     private void resetSidebarInfo() {
         selectedRoom = null;
-        lblSidebarRoomTitle.setText("Pilih Ruangan di Denah");
-        lblSidebarStatusBanner.setText("Klik salah satu kotak ruangan di denah");
-        lblSidebarStatusBanner.setBackground(new Color(241, 245, 249));
-        lblSidebarStatusBanner.setForeground(new Color(100, 116, 139));
-        lblSidebarCapacity.setText("<html><b style='color:#64748b; font-size:9px;'>KAPASITAS</b><br/><span style='color:#94a3b8;'>-</span></html>");
-        lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>LOKASI LANTAI</b><br/><span style='color:#94a3b8;'>-</span></html>");
-        lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>FASILITAS</b><br/><span style='color:#94a3b8;'>-</span></html>");
-        lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>STATUS PENGGUNAAN</b><br/><span style='color:#94a3b8;'>-</span></html>");
-        btnSidebarBook.setEnabled(false);
-        btnSidebarBook.setText("Ajukan Booking Ruangan");
-        btnSidebarBook.setBackground(ModernUIHelper.COLOR_SUCCESS);
+        if (inspectorBodyCardLayout != null && inspectorBodyContainer != null) {
+            inspectorBodyCardLayout.show(inspectorBodyContainer, "empty");
+        }
+        if (lblSidebarRoomTitle != null) lblSidebarRoomTitle.setText("Pilih Ruangan di Denah");
+        if (lblSidebarStatusBanner != null) {
+            lblSidebarStatusBanner.setText("Klik salah satu kotak ruangan di denah");
+            lblSidebarStatusBanner.setBackground(new Color(241, 245, 249));
+            lblSidebarStatusBanner.setForeground(new Color(100, 116, 139));
+        }
+        if (lblSidebarCapacity != null) lblSidebarCapacity.setText("<html><b style='color:#64748b; font-size:9px;'>👥 KAPASITAS & TIPE</b><br/><span style='color:#94a3b8;'>-</span></html>");
+        if (lblSidebarFloor != null) lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>📍 LOKASI LANTAI</b><br/><span style='color:#94a3b8;'>-</span></html>");
+        if (lblSidebarFacilities != null) lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>🛠️ FASILITAS RUANGAN</b><br/><span style='color:#94a3b8;'>-</span></html>");
+        if (lblSidebarOccupant != null) lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>📅 PENGGUNAAN SAAT INI</b><br/><span style='color:#94a3b8;'>-</span></html>");
+        if (btnSidebarBook != null) {
+            btnSidebarBook.setEnabled(false);
+            btnSidebarBook.setText("Ajukan Booking Ruangan");
+            btnSidebarBook.setBackground(ModernUIHelper.COLOR_SUCCESS);
+        }
+        if (roomDetailSidebar != null) {
+            roomDetailSidebar.repaint();
+        }
     }
 
     private void showRoleSwitchMenu() {
@@ -988,30 +1346,41 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     @Override
     public void onRoomSelected(Room room) {
         this.selectedRoom = room;
-        if (room == null) return;
+        if (room == null) {
+            resetSidebarInfo();
+            return;
+        }
 
-        lblSidebarRoomTitle.setText(room.getCode() + " - " + room.getName());
+        // Auto-expand inspector left bar saat ruangan dipilih agar pengguna langsung melihat informasi
+        if (isInspectorCollapsed()) {
+            setInspectorCollapsed(false);
+        }
+        if (inspectorBodyCardLayout != null && inspectorBodyContainer != null) {
+            inspectorBodyCardLayout.show(inspectorBodyContainer, "spec");
+        }
+
+        lblSidebarRoomTitle.setText(room.getCode() + " • " + room.getName());
         boolean isAvail = room.isAvailable();
         if (isAvail) {
-            lblSidebarStatusBanner.setText("● STATUS: TERSEDIA");
+            lblSidebarStatusBanner.setText("● STATUS: TERSEDIA (Bebas Reservasi)");
             lblSidebarStatusBanner.setBackground(new Color(236, 253, 245));
             lblSidebarStatusBanner.setForeground(new Color(5, 150, 105));
             btnSidebarBook.setEnabled(true);
             btnSidebarBook.setText("Ajukan Booking Ruangan ➔");
             btnSidebarBook.setBackground(ModernUIHelper.COLOR_SUCCESS);
         } else {
-            lblSidebarStatusBanner.setText("■ STATUS: TERPAKAI");
+            lblSidebarStatusBanner.setText("■ STATUS: TERPAKAI (Sedang Digunakan)");
             lblSidebarStatusBanner.setBackground(new Color(254, 242, 242));
             lblSidebarStatusBanner.setForeground(new Color(220, 38, 38));
             btnSidebarBook.setEnabled(false);
             btnSidebarBook.setText("Ruangan Terpakai");
-            btnSidebarBook.setBackground(new Color(148, 163, 184));
+            btnSidebarBook.setBackground(new Color(203, 213, 225));
         }
 
-        lblSidebarCapacity.setText("<html><b style='color:#64748b; font-size:9px;'>KAPASITAS</b><br/><span style='color:#0f172a; font-weight:bold;'>" + room.getCapacity() + " Kursi</span> <span style='color:#64748b;'>(" + room.getRoomType() + ")</span></html>");
-        lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>LOKASI LANTAI</b><br/><span style='color:#0f172a; font-weight:bold;'>Lantai " + room.getFloor() + "</span></html>");
-        lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>FASILITAS</b><br/><span style='color:#334155; font-size:11px;'>" + room.getFacilities() + "</span></html>");
-        lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>STATUS PENGGUNAAN</b><br/><span style='color:#334155; font-size:11px;'>" + room.getCurrentOccupantInfo() + "</span></html>");
+        lblSidebarCapacity.setText("<html><b style='color:#64748b; font-size:9px;'>👥 KAPASITAS & TIPE</b><br/><span style='color:#0f172a; font-weight:bold; font-size:11px;'>" + room.getCapacity() + " Kursi</span> &nbsp;<span style='color:#64748b;'>(" + room.getRoomType() + ")</span></html>");
+        lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>📍 LOKASI LANTAI</b><br/><span style='color:#0f172a; font-weight:bold; font-size:11px;'>Lantai " + room.getFloor() + "</span></html>");
+        lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>🛠️ FASILITAS RUANGAN</b><br/><span style='color:#334155; font-size:11px;'>" + room.getFacilities() + "</span></html>");
+        lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>📅 PENGGUNAAN SAAT INI</b><br/><span style='color:#334155; font-size:11px;'>" + room.getCurrentOccupantInfo() + "</span></html>");
     }
 
     @Override

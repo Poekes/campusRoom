@@ -2,6 +2,9 @@ package com.campusroom.ui;
 
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
@@ -14,6 +17,73 @@ import javax.swing.table.JTableHeader;
  * avatar inisial anti-aliased, renderer tabel badge pill, dan factory komponen modern.
  */
 public class ModernUIHelper {
+
+    // Deteksi Font Modern Sistem Terbaik (Ubuntu Sans, Noto Sans, Segoe UI, Inter, dll)
+    public static final String FONT_FAMILY = detectBestFontFamily();
+
+    private static String detectBestFontFamily() {
+        String[] candidates = {
+            "Inter", "Plus Jakarta Sans", "Segoe UI", "Ubuntu Sans", "Ubuntu", "Noto Sans", "Cantarell", "DejaVu Sans", "SansSerif"
+        };
+        try {
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            Set<String> set = new HashSet<>(Arrays.asList(ge.getAvailableFontFamilyNames()));
+            for (String c : candidates) {
+                if (set.contains(c)) {
+                    return c;
+                }
+            }
+        } catch (Exception ignored) {}
+        return "SansSerif";
+    }
+
+    public static Font font(int style, float size) {
+        return new Font(FONT_FAMILY, style, Math.round(size));
+    }
+
+    public static Font fontBold(float size) {
+        return font(Font.BOLD, size);
+    }
+
+    public static Font fontPlain(float size) {
+        return font(Font.PLAIN, size);
+    }
+
+    public static void styleComboBox(JComboBox<?> cb) {
+        cb.setFont(fontPlain(11));
+        cb.setBackground(Color.WHITE);
+        cb.setForeground(TEXT_DARK);
+        cb.putClientProperty("JComponent.roundRect", true);
+    }
+
+    public static void styleTextField(JTextField tf) {
+        tf.setFont(fontPlain(11));
+        tf.setBackground(Color.WHITE);
+        tf.setForeground(TEXT_DARK);
+        tf.putClientProperty("JComponent.roundRect", true);
+    }
+
+    /**
+     * Membuat Panel Kapsul (Filter Pill Container) dengan border halus dan latar Slate 50.
+     */
+    public static JPanel createFilterCapsule(LayoutManager layout) {
+        JPanel p = new JPanel(layout) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(248, 250, 252)); // Slate 50
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.setColor(new Color(226, 232, 240)); // Slate 200
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        p.setOpaque(false);
+        p.setBorder(new EmptyBorder(3, 8, 3, 8));
+        return p;
+    }
 
     // Palet Warna UI Modern Minimalis (Tailwind Slate & Vibrant Accent Theme)
     public static final Color SIDEBAR_BG = new Color(11, 15, 25);          // Deep Slate 950
@@ -50,40 +120,43 @@ public class ModernUIHelper {
 
     /**
      * Terapkan styling modern ke JTable:
-     * - Row height lega (34px)
-     * - Header styled minimalis dengan font bold dan latar Slate 100
-     * - Striping baris lembut
-     * - Selection warna lembut (Indigo 100)
-     * - Garis horizontal tipis
+     * - Row height lega (38px) untuk kemudahan membaca & pernapasan visual
+     * - Header styled minimalis dengan font bold dan latar Slate 50/100
+     * - Striping baris lembut (Putih & Slate 50)
+     * - Selection warna lembut (Indigo 50 / Slate 100)
+     * - Garis horizontal sangat tipis
      */
     public static void styleModernTable(JTable table) {
-        table.setRowHeight(34);
+        table.setRowHeight(38);
         table.setFont(new Font("SansSerif", Font.PLAIN, 12));
         table.setShowHorizontalLines(true);
         table.setShowVerticalLines(false);
-        table.setGridColor(BORDER_SUBTLE);
-        table.setSelectionBackground(new Color(224, 231, 255)); // Indigo 100
+        table.setGridColor(new Color(241, 245, 249));
+        table.setSelectionBackground(new Color(238, 242, 255)); // Indigo 50
         table.setSelectionForeground(TEXT_DARK);
         table.setFillsViewportHeight(true);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
         // Header
         JTableHeader header = table.getTableHeader();
-        header.setPreferredSize(new Dimension(header.getWidth(), 36));
+        header.setPreferredSize(new Dimension(header.getWidth(), 38));
         header.setFont(new Font("SansSerif", Font.BOLD, 11));
-        header.setBackground(new Color(241, 245, 249)); // Slate 100
+        header.setBackground(new Color(248, 250, 252)); // Slate 50
         header.setForeground(new Color(71, 85, 105));   // Slate 600
         header.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_LIGHT));
 
-        // Center / Left cell padding
+        // Center / Left cell padding & alternating rows
         table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable tbl, Object value, boolean isSelected, boolean hasFocus, int row, int col) {
                 JLabel lbl = (JLabel) super.getTableCellRendererComponent(tbl, value, isSelected, hasFocus, row, col);
-                lbl.setBorder(new EmptyBorder(0, 10, 0, 10));
+                lbl.setBorder(new EmptyBorder(0, 14, 0, 14));
                 if (!isSelected) {
                     lbl.setBackground((row % 2 == 0) ? Color.WHITE : new Color(248, 250, 252));
                     lbl.setForeground(TEXT_DARK);
+                } else {
+                    lbl.setBackground(new Color(238, 242, 255));
+                    lbl.setForeground(new Color(30, 58, 138)); // Blue 900
                 }
                 return lbl;
             }
@@ -245,36 +318,72 @@ public class ModernUIHelper {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                 Color currentBg = getBackground();
                 if (!isEnabled()) {
-                    currentBg = new Color(203, 213, 225); // Slate 300 disabled
+                    currentBg = new Color(226, 232, 240); // Slate 200 disabled
                 } else if (getModel().isPressed()) {
-                    currentBg = currentBg.darker();
+                    currentBg = new Color(
+                            Math.max(0, (int)(currentBg.getRed() * 0.85)),
+                            Math.max(0, (int)(currentBg.getGreen() * 0.85)),
+                            Math.max(0, (int)(currentBg.getBlue() * 0.85))
+                    );
                 } else if (getModel().isRollover()) {
                     currentBg = new Color(
-                            Math.min(255, (int)(currentBg.getRed() * 0.93)),
-                            Math.min(255, (int)(currentBg.getGreen() * 0.93)),
-                            Math.min(255, (int)(currentBg.getBlue() * 0.93))
+                            Math.min(255, (int)(currentBg.getRed() * 0.94)),
+                            Math.min(255, (int)(currentBg.getGreen() * 0.94)),
+                            Math.min(255, (int)(currentBg.getBlue() * 0.94))
                     );
                 }
                 g2.setColor(currentBg);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+
+                if (isEnabled()) {
+                    g2.setColor(new Color(0, 0, 0, 18));
+                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                }
+
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        btn.setFont(new Font("SansSerif", bold ? Font.BOLD : Font.PLAIN, fontSize));
+        btn.setFont(font(bold ? Font.BOLD : Font.PLAIN, fontSize));
         btn.setBackground(bg);
         btn.setForeground(fg);
         btn.setFocusPainted(false);
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        btn.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(0, 0, 0, 18), 1, true),
-                new EmptyBorder(6, 14, 6, 14)
-        ));
+        btn.setBorder(new EmptyBorder(7, 16, 7, 16));
         return btn;
+    }
+
+    public static JButton createCompactButton(String text, Color bg, Color fg, int fontSize, boolean bold) {
+        JButton btn = createStyledButton(text, bg, fg, fontSize, bold);
+        btn.setBorder(new EmptyBorder(2, 4, 2, 4));
+        return btn;
+    }
+
+    /**
+     * Membuat Card Panel dengan sudut membulat elegan (12px), background putih, dan border halus.
+     */
+    public static JPanel createCardPanel(LayoutManager layout) {
+        JPanel card = new JPanel(layout) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(Color.WHITE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.setColor(BORDER_LIGHT);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(12, 16, 12, 16));
+        return card;
     }
 
     /**

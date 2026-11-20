@@ -453,8 +453,19 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         rightPanel.add(lblFooterDoc);
 
         JLabel lblScale = new JLabel("100%");
-        lblScale.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        lblScale.setForeground(new Color(148, 163, 184));
+        lblScale.setFont(ModernUIHelper.fontBold(10));
+        lblScale.setForeground(ModernUIHelper.COLOR_PRIMARY);
+        lblScale.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        lblScale.setToolTipText("Klik untuk reset zoom (100%)");
+        lblScale.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (floorCanvas != null) floorCanvas.resetZoom();
+            }
+        });
+        floorCanvas.addZoomChangeListener(zoom -> {
+            lblScale.setText((int) Math.round(zoom * 100) + "%");
+        });
         rightPanel.add(lblScale);
 
         footer.add(rightPanel, BorderLayout.EAST);
@@ -655,6 +666,65 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         onFloorChanged();
     }
 
+    public Campus getSelectedCampus() {
+        return (Campus) cbCampus.getSelectedItem();
+    }
+
+    public Building getSelectedBuilding() {
+        return (Building) cbBuilding.getSelectedItem();
+    }
+
+    public int getSelectedFloor() {
+        return getSelectedFloorNumber();
+    }
+
+    public void setSelectedLocation(int campusId, int buildingId, int floorNum) {
+        isUpdatingCombos = true;
+        for (int i = 0; i < cbCampus.getItemCount(); i++) {
+            Campus c = cbCampus.getItemAt(i);
+            if (c != null && c.getId() == campusId) {
+                cbCampus.setSelectedIndex(i);
+                break;
+            }
+        }
+
+        Campus c = (Campus) cbCampus.getSelectedItem();
+        if (c != null) {
+            cbBuilding.removeAllItems();
+            List<Building> buildings = buildingDao.getBuildingsByCampusId(c.getId());
+            for (Building b : buildings) {
+                cbBuilding.addItem(b);
+            }
+        }
+
+        for (int i = 0; i < cbBuilding.getItemCount(); i++) {
+            Building b = cbBuilding.getItemAt(i);
+            if (b != null && b.getId() == buildingId) {
+                cbBuilding.setSelectedIndex(i);
+                break;
+            }
+        }
+
+        Building b = (Building) cbBuilding.getSelectedItem();
+        if (b != null) {
+            cbFloor.removeAllItems();
+            int totalFloors = Math.max(1, b.getTotalFloors());
+            for (int i = 1; i <= totalFloors; i++) {
+                cbFloor.addItem("Lantai " + i);
+            }
+        }
+
+        String floorStr = "Lantai " + floorNum;
+        for (int i = 0; i < cbFloor.getItemCount(); i++) {
+            if (floorStr.equals(cbFloor.getItemAt(i))) {
+                cbFloor.setSelectedIndex(i);
+                break;
+            }
+        }
+        isUpdatingCombos = false;
+        onFloorChanged();
+    }
+
     private int getSelectedFloorNumber() {
         String item = (String) cbFloor.getSelectedItem();
         if (item != null && item.startsWith("Lantai ")) {
@@ -753,7 +823,7 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 b.setTotalFloors(newTotal);
 
                 // Buat blueprint bawaan untuk lantai baru jika belum ada
-                String defaultImg = (b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png";
+                String defaultImg = (b.getId() == 3) ? "images/kampus2_lantai_1.png" : ((b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png");
                 floorPlanDao.saveFloorPlanImage(b.getId(), newFloorNum, defaultImg);
 
                 // Perbarui dropdown lantai
@@ -855,7 +925,9 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         if (b == null) return;
         int floorNum = getSelectedFloorNumber();
 
-        String defaultImg = (b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png";
+        String defaultImg = (b.getId() == 3)
+                ? (floorNum == 2 ? "images/kampus2_lantai_2.png" : (floorNum == 3 ? "images/kampus2_lantai_3.png" : "images/kampus2_lantai_1.png"))
+                : ((b.getId() == 2) ? "images/floorplan_gedung_b.png" : "images/floorplan_gedung_a.png");
         floorPlanDao.saveFloorPlanImage(b.getId(), floorNum, defaultImg);
         floorCanvas.loadFloorImage(defaultImg);
         lblBlueprintStatus.setText("Standar");
@@ -963,8 +1035,10 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
                 }
             }
 
-            int posX = 60 + (currentRooms.size() % 4) * 200;
-            int posY = 70 + (currentRooms.size() / 4) * 270;
+            int imgW = (floorCanvas != null && floorCanvas.getFloorImage() != null) ? floorCanvas.getFloorImage().getWidth() : 1100;
+            int imgH = (floorCanvas != null && floorCanvas.getFloorImage() != null) ? floorCanvas.getFloorImage().getHeight() : 650;
+            int posX = Math.min(imgW - 200, Math.max(60, 60 + (currentRooms.size() % 5) * 190));
+            int posY = Math.min(imgH - 170, Math.max(70, 70 + ((currentRooms.size() / 5) % 3) * 170));
             Room newRoom = new Room(b.getId(), code, name, floorNum, (Integer) spCap.getValue(),
                     (String) cbType.getSelectedItem(), txtFac.getText().trim(), posX, posY, 180, 150);
 

@@ -6,7 +6,7 @@ echo "=== Mengompilasi Proyek CampusRoom (Java Swing + SQLite) ==="
 mkdir -p bin
 
 # Compile dengan javac menggunakan lib/*.jar
-javac -d bin -cp "lib/*" $(find src/main/java -name "*.java")
+javac -encoding UTF-8 -d bin -cp "lib/*" $(find src/main/java -name "*.java")
 
 # Salin resource gambar ke folder bin
 mkdir -p bin/images

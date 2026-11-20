@@ -187,9 +187,14 @@ public class AdminPanel extends JPanel {
 
         JPanel btnCampusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         btnCampusPanel.setOpaque(false);
-        JButton btnAddCampus = ModernUIHelper.createStyledButton("➕ Tambah Kampus Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
+        JButton btnAddCampus = ModernUIHelper.createStyledButton("+ Tambah Kampus Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
         btnAddCampus.addActionListener(e -> showAddCampusDialog());
         btnCampusPanel.add(btnAddCampus);
+
+        JButton btnDeleteCampus = ModernUIHelper.createStyledButton("Hapus Kampus", new Color(254, 242, 242), ModernUIHelper.COLOR_DANGER, 11, false);
+        btnDeleteCampus.addActionListener(e -> handleDeleteCampus());
+        btnCampusPanel.add(btnDeleteCampus);
+
         pnlCampus.add(btnCampusPanel, BorderLayout.SOUTH);
 
         // Right Card: Gedung
@@ -217,7 +222,7 @@ public class AdminPanel extends JPanel {
 
         JPanel btnBuildingPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         btnBuildingPanel.setOpaque(false);
-        JButton btnAddBuilding = ModernUIHelper.createStyledButton("➕ Tambah Gedung Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
+        JButton btnAddBuilding = ModernUIHelper.createStyledButton("+ Tambah Gedung Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 11, true);
         btnAddBuilding.addActionListener(e -> showAddBuildingDialog());
         btnBuildingPanel.add(btnAddBuilding);
         pnlBuilding.add(btnBuildingPanel, BorderLayout.SOUTH);
@@ -274,10 +279,10 @@ public class AdminPanel extends JPanel {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
         actions.setOpaque(false);
 
-        JButton btnDeleteRoom = ModernUIHelper.createStyledButton("🗑️ Hapus Ruangan", new Color(254, 226, 226), ModernUIHelper.COLOR_DANGER, 11, false);
+        JButton btnDeleteRoom = ModernUIHelper.createStyledButton("Hapus Ruangan", new Color(254, 226, 226), ModernUIHelper.COLOR_DANGER, 11, false);
         btnDeleteRoom.addActionListener(e -> handleDeleteRoom());
 
-        JButton btnAddRoom = ModernUIHelper.createStyledButton("➕ Tambah Ruangan Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
+        JButton btnAddRoom = ModernUIHelper.createStyledButton("+ Tambah Ruangan Baru", ModernUIHelper.COLOR_PRIMARY, Color.WHITE, 12, true);
         btnAddRoom.addActionListener(e -> showAddRoomDialog());
 
         actions.add(btnDeleteRoom);
@@ -374,10 +379,28 @@ public class AdminPanel extends JPanel {
         }
     }
 
+    private void handleDeleteCampus() {
+        int row = tblCampuses.getSelectedRow();
+        if (row == -1) {
+            JOptionPane.showMessageDialog(this, "Pilih kampus yang ingin dihapus dari tabel!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        int id = (int) modelCampuses.getValueAt(row, 0);
+        String name = (String) modelCampuses.getValueAt(row, 2);
+        int confirm = JOptionPane.showConfirmDialog(this, "Yakin ingin menghapus kampus: " + name + "?", "Konfirmasi Hapus", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            if (campusDao.deleteCampus(id)) {
+                JOptionPane.showMessageDialog(this, "Kampus " + name + " berhasil dihapus!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+                refreshData();
+                if (onDataChangedCallback != null) onDataChangedCallback.run();
+            }
+        }
+    }
+
     private void showAddCampusDialog() {
-        JTextField txtCode = new JTextField("KMP-03", 10);
-        JTextField txtName = new JTextField("Kampus 3 (Teknologi & Vokasi)", 20);
-        JTextField txtAddress = new JTextField("Jl. Palagan Tentara Pelajar KM 9", 20);
+        JTextField txtCode = new JTextField("KMP-01", 10);
+        JTextField txtName = new JTextField("Kampus Utama (Pusat)", 20);
+        JTextField txtAddress = new JTextField("Jl. Ring Road Utara No. 1, Sleman", 20);
         JTextField txtCity = new JTextField("Sleman, Yogyakarta", 15);
 
         JPanel p = new JPanel(new GridLayout(4, 2, 8, 8));

@@ -30,12 +30,24 @@ public class InteractiveFloorPlanPanel extends JPanel {
         void onRoomMoved(Room room, int newX, int newY);
     }
 
+    public interface ZoomChangeListener {
+        void onZoomChanged(double newZoom);
+    }
+
     private BufferedImage floorImage;
     private String currentImagePath;
     private List<Room> rooms = new ArrayList<>();
     private Room selectedRoom = null;
     private Room hoveredRoom = null;
     private FloorPlanListener listener;
+
+    // Zoom & Pan System (0.4x - 2.5x)
+    private double zoomLevel = 1.0;
+    public static final double MIN_ZOOM = 0.40;
+    public static final double MAX_ZOOM = 2.50;
+    public static final double ZOOM_STEP = 0.15;
+    private final List<ZoomChangeListener> zoomListeners = new ArrayList<>();
+    private Point lastPanPoint = null;
 
     private boolean layoutEditMode = false;
     private Point dragOffset = null;
@@ -62,22 +74,46 @@ public class InteractiveFloorPlanPanel extends JPanel {
 
             @Override
             public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e) || SwingUtilities.isMiddleMouseButton(e)) {
+                    lastPanPoint = e.getLocationOnScreen();
+                    setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                    return;
+                }
                 handleMousePressed(e);
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e) || SwingUtilities.isMiddleMouseButton(e)) {
+                    if (lastPanPoint != null && getParent() instanceof JViewport) {
+                        JViewport vp = (JViewport) getParent();
+                        Point current = e.getLocationOnScreen();
+                        int dx = current.x - lastPanPoint.x;
+                        int dy = current.y - lastPanPoint.y;
+                        Point viewPos = vp.getViewPosition();
+                        int maxViewX = Math.max(0, getWidth() - vp.getWidth());
+                        int maxViewY = Math.max(0, getHeight() - vp.getHeight());
+                        vp.setViewPosition(new Point(Math.max(0, Math.min(maxViewX, viewPos.x - dx)), Math.max(0, Math.min(maxViewY, viewPos.y - dy))));
+                        lastPanPoint = current;
+                    }
+                    return;
+                }
                 handleMouseDragged(e);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e) || SwingUtilities.isMiddleMouseButton(e)) {
+                    lastPanPoint = null;
+                    setCursor(layoutEditMode ? Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR) : Cursor.getDefaultCursor());
+                    return;
+                }
                 handleMouseReleased(e);
             }
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && selectedRoom != null && listener != null) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2 && selectedRoom != null && listener != null) {
                     listener.onRoomDoubleClicked(selectedRoom);
                 }
             }
@@ -85,6 +121,72 @@ public class InteractiveFloorPlanPanel extends JPanel {
 
         addMouseListener(mouseHandler);
         addMouseMotionListener(mouseHandler);
+
+        // Zoom via Ctrl + Mouse Wheel (Centered to Cursor)
+        addMouseWheelListener(e -> {
+            if (e.isControlDown() || e.isMetaDown()) {
+                Point mousePos = e.getPoint();
+                double oldZoom = zoomLevel;
+                double targetZoom = (e.getWheelRotation() < 0)
+                        ? Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP)
+                        : Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
+                targetZoom = Math.round(targetZoom * 100.0) / 100.0;
+
+                if (Math.abs(oldZoom - targetZoom) > 0.001) {
+                    if (getParent() instanceof JViewport) {
+                        JViewport vp = (JViewport) getParent();
+                        Point viewPos = vp.getViewPosition();
+                        double logicalX = mousePos.x / oldZoom;
+                        double logicalY = mousePos.y / oldZoom;
+
+                        setZoomLevel(targetZoom);
+
+                        int newViewX = (int) Math.round(logicalX * targetZoom - (mousePos.x - viewPos.x));
+                        int newViewY = (int) Math.round(logicalY * targetZoom - (mousePos.y - viewPos.y));
+                        int maxViewX = Math.max(0, getWidth() - vp.getWidth());
+                        int maxViewY = Math.max(0, getHeight() - vp.getHeight());
+                        vp.setViewPosition(new Point(Math.max(0, Math.min(maxViewX, newViewX)), Math.max(0, Math.min(maxViewY, newViewY))));
+                    } else {
+                        setZoomLevel(targetZoom);
+                    }
+                }
+                e.consume();
+            }
+        });
+    }
+
+    public void addZoomChangeListener(ZoomChangeListener listener) {
+        if (listener != null) {
+            zoomListeners.add(listener);
+        }
+    }
+
+    public double getZoomLevel() {
+        return zoomLevel;
+    }
+
+    public void setZoomLevel(double zoom) {
+        double clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+        clamped = Math.round(clamped * 100.0) / 100.0;
+        if (Math.abs(this.zoomLevel - clamped) > 0.001) {
+            this.zoomLevel = clamped;
+            updateCanvasDimension();
+            for (ZoomChangeListener l : zoomListeners) {
+                l.onZoomChanged(this.zoomLevel);
+            }
+        }
+    }
+
+    public void zoomIn() {
+        setZoomLevel(zoomLevel + ZOOM_STEP);
+    }
+
+    public void zoomOut() {
+        setZoomLevel(zoomLevel - ZOOM_STEP);
+    }
+
+    public void resetZoom() {
+        setZoomLevel(1.0);
     }
 
     public void setFloorPlanListener(FloorPlanListener listener) {
@@ -95,6 +197,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
         this.rooms = (rooms != null) ? rooms : new ArrayList<>();
         this.selectedRoom = null;
         this.hoveredRoom = null;
+        updateCanvasDimension();
         repaint();
     }
 
@@ -105,6 +208,10 @@ public class InteractiveFloorPlanPanel extends JPanel {
 
     public Room getSelectedRoom() {
         return selectedRoom;
+    }
+
+    public BufferedImage getFloorImage() {
+        return floorImage;
     }
 
     public void setLayoutEditMode(boolean editMode) {
@@ -124,9 +231,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
         this.currentImagePath = path;
         floorImage = null;
         if (path == null || path.trim().isEmpty()) {
-            setPreferredSize(new Dimension(1050, 650));
-            revalidate();
-            repaint();
+            updateCanvasDimension();
             return;
         }
 
@@ -148,13 +253,27 @@ public class InteractiveFloorPlanPanel extends JPanel {
             System.err.println("Gagal memuat gambar denah: " + e.getMessage());
         }
 
-        if (floorImage != null) {
-            int nw = Math.max(1050, floorImage.getWidth());
-            int nh = Math.max(650, floorImage.getHeight());
-            setPreferredSize(new Dimension(nw, nh));
-        } else {
-            setPreferredSize(new Dimension(1050, 650));
+        updateCanvasDimension();
+    }
+
+    public void updateCanvasDimension() {
+        int baseW = (floorImage != null) ? floorImage.getWidth() : 1050;
+        int baseH = (floorImage != null) ? floorImage.getHeight() : 650;
+
+        int maxRoomX = 0;
+        int maxRoomY = 0;
+        if (rooms != null) {
+            for (Room r : rooms) {
+                maxRoomX = Math.max(maxRoomX, r.getPosX() + r.getWidth() + 30);
+                maxRoomY = Math.max(maxRoomY, r.getPosY() + r.getHeight() + 30);
+            }
         }
+
+        int targetW = Math.max(baseW, maxRoomX);
+        int targetH = Math.max(baseH, maxRoomY);
+        int scaledW = (int) Math.round(targetW * zoomLevel);
+        int scaledH = (int) Math.round(targetH * zoomLevel);
+        setPreferredSize(new Dimension(scaledW, scaledH));
         revalidate();
         repaint();
     }
@@ -167,29 +286,32 @@ public class InteractiveFloorPlanPanel extends JPanel {
     }
 
     private void handleMouseMoved(MouseEvent e) {
-        if (layoutEditMode && selectedRoom != null && isNearBottomRightCorner(selectedRoom, e.getX(), e.getY())) {
+        int logicalX = (int) Math.round(e.getX() / zoomLevel);
+        int logicalY = (int) Math.round(e.getY() / zoomLevel);
+
+        if (layoutEditMode && selectedRoom != null && isNearBottomRightCorner(selectedRoom, logicalX, logicalY)) {
             setCursor(Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR));
             setToolTipText("📐 Geser sudut untuk Mengubah Ukuran (Lebar × Tinggi)");
             return;
         }
 
-        Room found = findRoomAt(e.getX(), e.getY());
+        Room found = findRoomAt(logicalX, logicalY);
         if (found != hoveredRoom) {
             hoveredRoom = found;
             if (hoveredRoom != null) {
                 setCursor(Cursor.getPredefinedCursor(layoutEditMode ? Cursor.MOVE_CURSOR : Cursor.HAND_CURSOR));
-                String statusStr = hoveredRoom.isAvailable() 
-                        ? "<span style='color:#059669; font-weight:bold;'>● TERSEDIA</span>" 
-                        : "<span style='color:#dc2626; font-weight:bold;'>■ TERPAKAI</span>";
-                String editHint = layoutEditMode ? "<br/><span style='color:#0284c7; font-size:10px;'>💡 <b>Double-click</b> untuk buka Properti Ruangan (Modal)</span>" : "";
-                String tooltip = "<html><body style='font-family:sans-serif; padding:4px;'>" +
-                        "<b style='font-size:12px; color:#1e293b;'>" + hoveredRoom.getCode() + " - " + hoveredRoom.getName() + "</b><br/>" +
-                        "<b>Tipe:</b> " + hoveredRoom.getRoomType() + " | <b>Kapasitas:</b> " + hoveredRoom.getCapacity() + " Kursi<br/>" +
-                        "<b>Fasilitas:</b> " + hoveredRoom.getFacilities() + "<br/>" +
-                        "<b>Status:</b> " + statusStr + "<br/>" +
-                        "<i style='color:#64748b; font-size:10px;'>" + hoveredRoom.getCurrentOccupantInfo() + "</i>" +
+                String statusBadgeHtml = hoveredRoom.isAvailable()
+                        ? "<span style='background:#dcfce7; color:#166534; font-weight:bold; padding:2px 8px; border-radius:4px;'>● TERSEDIA</span>"
+                        : "<span style='background:#fee2e2; color:#991b1b; font-weight:bold; padding:2px 8px; border-radius:4px;'>■ TERPAKAI</span>";
+                String editHint = layoutEditMode ? "<div style='margin-top:6px; padding-top:4px; border-top:1px solid #e2e8f0; color:#0284c7; font-size:10px;'>💡 <b>Double-click</b> untuk buka Properti Ruangan (Modal)</div>" : "";
+                String tooltip = "<html><div style='font-family:sans-serif; padding:6px; color:#1e293b;'>" +
+                        "<div style='font-size:13px; font-weight:bold; color:#0f172a; margin-bottom:4px;'>" + hoveredRoom.getCode() + " • " + hoveredRoom.getName() + "</div>" +
+                        "<div style='color:#475569; font-size:11px; margin-bottom:4px;'>" + hoveredRoom.getRoomType() + " &nbsp;•&nbsp; <b>" + hoveredRoom.getCapacity() + " Kursi</b></div>" +
+                        "<div style='font-size:11px; color:#334155; margin-bottom:6px;'>Fasilitas: " + hoveredRoom.getFacilities() + "</div>" +
+                        "<div style='margin-bottom:4px;'>" + statusBadgeHtml + "</div>" +
+                        "<div style='color:#64748b; font-size:10px; font-style:italic;'>" + hoveredRoom.getCurrentOccupantInfo() + "</div>" +
                         editHint +
-                        "</body></html>";
+                        "</div></html>";
                 setToolTipText(tooltip);
             } else {
                 setCursor(Cursor.getDefaultCursor());
@@ -200,13 +322,16 @@ public class InteractiveFloorPlanPanel extends JPanel {
     }
 
     private void handleMousePressed(MouseEvent e) {
-        if (layoutEditMode && selectedRoom != null && isNearBottomRightCorner(selectedRoom, e.getX(), e.getY())) {
+        int logicalX = (int) Math.round(e.getX() / zoomLevel);
+        int logicalY = (int) Math.round(e.getY() / zoomLevel);
+
+        if (layoutEditMode && selectedRoom != null && isNearBottomRightCorner(selectedRoom, logicalX, logicalY)) {
             isResizing = true;
             isDragging = false;
             return;
         }
 
-        Room found = findRoomAt(e.getX(), e.getY());
+        Room found = findRoomAt(logicalX, logicalY);
         selectedRoom = found;
         isResizing = false;
         if (selectedRoom != null) {
@@ -214,7 +339,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
                 listener.onRoomSelected(selectedRoom);
             }
             if (layoutEditMode) {
-                dragOffset = new Point(e.getX() - selectedRoom.getPosX(), e.getY() - selectedRoom.getPosY());
+                dragOffset = new Point(logicalX - selectedRoom.getPosX(), logicalY - selectedRoom.getPosY());
                 isDragging = true;
             }
         } else {
@@ -229,9 +354,12 @@ public class InteractiveFloorPlanPanel extends JPanel {
     private void handleMouseDragged(MouseEvent e) {
         if (!layoutEditMode || selectedRoom == null) return;
 
+        int logicalX = (int) Math.round(e.getX() / zoomLevel);
+        int logicalY = (int) Math.round(e.getY() / zoomLevel);
+
         if (isResizing) {
-            int newW = Math.max(70, Math.min(1000, e.getX() - selectedRoom.getPosX()));
-            int newH = Math.max(50, Math.min(800, e.getY() - selectedRoom.getPosY()));
+            int newW = Math.max(70, Math.min(1000, logicalX - selectedRoom.getPosX()));
+            int newH = Math.max(50, Math.min(800, logicalY - selectedRoom.getPosY()));
             selectedRoom.setWidth(newW);
             selectedRoom.setHeight(newH);
             if (listener != null) {
@@ -239,10 +367,12 @@ public class InteractiveFloorPlanPanel extends JPanel {
             }
             repaint();
         } else if (isDragging && dragOffset != null) {
-            int maxX = Math.max(1200, getWidth()) - selectedRoom.getWidth() - 10;
-            int maxY = Math.max(800, getHeight()) - selectedRoom.getHeight() - 10;
-            int newX = Math.max(10, Math.min(maxX, e.getX() - dragOffset.x));
-            int newY = Math.max(10, Math.min(maxY, e.getY() - dragOffset.y));
+            int canvasLimitW = (floorImage != null) ? Math.max(floorImage.getWidth(), 1200) : 1200;
+            int canvasLimitH = (floorImage != null) ? Math.max(floorImage.getHeight(), 800) : 800;
+            int maxX = canvasLimitW - selectedRoom.getWidth() - 10;
+            int maxY = canvasLimitH - selectedRoom.getHeight() - 10;
+            int newX = Math.max(10, Math.min(maxX, logicalX - dragOffset.x));
+            int newY = Math.max(10, Math.min(maxY, logicalY - dragOffset.y));
             selectedRoom.setPosX(newX);
             selectedRoom.setPosY(newY);
             if (listener != null) {
@@ -256,6 +386,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
         if (layoutEditMode && (isDragging || isResizing) && selectedRoom != null) {
             isDragging = false;
             isResizing = false;
+            updateCanvasDimension();
             if (listener != null) {
                 listener.onRoomMoved(selectedRoom, selectedRoom.getPosX(), selectedRoom.getPosY());
             }
@@ -280,15 +411,34 @@ public class InteractiveFloorPlanPanel extends JPanel {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-        int w = getWidth();
-        int h = getHeight();
+        // Terapkan Zoom Scaling
+        g2.scale(zoomLevel, zoomLevel);
 
-        // 1. Gambar latar belakang (Blueprint image atau Grid fallback)
+        int unscaledW = (int) Math.ceil(getWidth() / zoomLevel);
+        int unscaledH = (int) Math.ceil(getHeight() / zoomLevel);
+
+        // 1. Gambar latar belakang denah (Blueprint atau fallback grid)
         if (floorImage != null) {
-            g2.drawImage(floorImage, 0, 0, w, h, null);
+            int imgW = floorImage.getWidth();
+            int imgH = floorImage.getHeight();
+
+            // Jika canvas Swing lebih lebar/tinggi dari dimensi gambar, gambar grid canvas arsitektur
+            if (unscaledW > imgW || unscaledH > imgH) {
+                drawFallbackGrid(g2, Math.max(unscaledW, imgW), Math.max(unscaledH, imgH));
+            }
+
+            // Gambar denah blueprint dalam dimensi alaminya (1:1 pixel-perfect)
+            g2.drawImage(floorImage, 0, 0, imgW, imgH, null);
+
+            // Garis batas blueprint denah
+            g2.setColor(new Color(203, 213, 225));
+            g2.setStroke(new BasicStroke(1.0f));
+            g2.drawRect(0, 0, imgW, imgH);
         } else {
-            drawFallbackGrid(g2, w, h);
+            drawFallbackGrid(g2, unscaledW, unscaledH);
         }
 
         // 2. Gambar setiap Ruangan
@@ -309,101 +459,136 @@ public class InteractiveFloorPlanPanel extends JPanel {
         boolean isSelected = (r == selectedRoom);
         boolean isAvail = r.isAvailable();
 
-        // Shadow halus
-        g2.setColor(new Color(0, 0, 0, 35));
-        g2.fillRoundRect(rx + 3, ry + 3, rw, rh, 12, 12);
+        // 1. Soft Layered Shadows (Modern Elevation)
+        if (isSelected) {
+            g2.setColor(new Color(245, 158, 11, 40));
+            g2.fillRoundRect(rx - 3, ry - 3, rw + 6, rh + 6, 16, 16);
+            g2.setColor(new Color(15, 23, 42, 25));
+            g2.fillRoundRect(rx, ry + 4, rw, rh + 2, 14, 14);
+        } else if (isHovered) {
+            g2.setColor(new Color(56, 189, 248, 45));
+            g2.fillRoundRect(rx - 2, ry - 2, rw + 4, rh + 4, 14, 14);
+            g2.setColor(new Color(15, 23, 42, 28));
+            g2.fillRoundRect(rx, ry + 4, rw, rh + 2, 14, 14);
+        } else {
+            g2.setColor(new Color(15, 23, 42, 14));
+            g2.fillRoundRect(rx, ry + 3, rw, rh + 1, 14, 14);
+            g2.setColor(new Color(15, 23, 42, 20));
+            g2.fillRoundRect(rx, ry + 1, rw, rh, 12, 12);
+        }
 
-        // Fill background ruangan (Hijau vs Merah)
+        // 2. Fill background ruangan (Hijau vs Merah)
         Color fillColor = isAvail ? COLOR_AVAILABLE_BG : COLOR_OCCUPIED_BG;
         g2.setColor(fillColor);
         g2.fillRoundRect(rx, ry, rw, rh, 12, 12);
 
-        // Border
+        // 3. Borders & Focus Rings
         if (isSelected) {
             g2.setColor(COLOR_SELECTED_BORDER);
-            g2.setStroke(new BasicStroke(3.0f));
+            g2.setStroke(new BasicStroke(2.5f));
+            g2.drawRoundRect(rx, ry, rw, rh, 12, 12);
         } else if (isHovered) {
             g2.setColor(COLOR_HOVER_BORDER);
-            g2.setStroke(new BasicStroke(2.5f));
+            g2.setStroke(new BasicStroke(2.0f));
+            g2.drawRoundRect(rx, ry, rw, rh, 12, 12);
         } else {
             g2.setColor(isAvail ? COLOR_AVAILABLE_BORDER : COLOR_OCCUPIED_BORDER);
-            g2.setStroke(new BasicStroke(1.5f));
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.drawRoundRect(rx, ry, rw, rh, 12, 12);
         }
-        g2.drawRoundRect(rx, ry, rw, rh, 12, 12);
 
-        // Label Ruangan di dalam Box
-        // Header Strip
-        g2.setColor(new Color(15, 23, 42, 140));
+        // 4. Header Glass Strip
+        g2.setColor(new Color(15, 23, 42, 150));
         g2.fillRoundRect(rx, ry, rw, 28, 12, 12);
         g2.fillRect(rx, ry + 16, rw, 12); // Menutupi rounded bawah pada strip atas
 
         // Teks Kode Ruangan (Contoh: R. 201)
         g2.setColor(Color.WHITE);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 13));
+        g2.setFont(ModernUIHelper.fontBold(13));
         g2.drawString(r.getCode(), rx + 10, ry + 19);
 
         // Badge Kapasitas di pojok kanan atas strip
-        String capStr = r.getCapacity() + " Mhs";
-        g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        int capStrW = g2.getFontMetrics().stringWidth(capStr);
-        g2.drawString(capStr, rx + rw - capStrW - 10, ry + 19);
-
-        // Nama Ruangan
+        String capStr = r.getCapacity() + " Kursi";
+        g2.setFont(ModernUIHelper.fontBold(9));
+        FontMetrics fmCap = g2.getFontMetrics();
+        int capW = fmCap.stringWidth(capStr);
+        int pillX = rx + rw - capW - 16;
+        int pillY = ry + 5;
+        g2.setColor(new Color(255, 255, 255, 35));
+        g2.fillRoundRect(pillX, pillY, capW + 10, 18, 6, 6);
         g2.setColor(Color.WHITE);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 11));
+        g2.drawString(capStr, pillX + 5, pillY + 13);
+
+        // 5. Nama Ruangan
+        g2.setColor(Color.WHITE);
+        g2.setFont(ModernUIHelper.fontBold(11));
         String nameStr = r.getName();
-        if (g2.getFontMetrics().stringWidth(nameStr) > rw - 16) {
-            nameStr = nameStr.substring(0, Math.min(18, nameStr.length())) + "...";
+        if (g2.getFontMetrics().stringWidth(nameStr) > rw - 20) {
+            nameStr = nameStr.substring(0, Math.min(16, nameStr.length())) + "...";
         }
         g2.drawString(nameStr, rx + 10, ry + 48);
 
         // Tipe Ruangan
-        g2.setColor(new Color(241, 245, 249));
-        g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        g2.setColor(new Color(241, 245, 249, 210));
+        g2.setFont(ModernUIHelper.fontPlain(10));
         g2.drawString(r.getRoomType(), rx + 10, ry + 64);
 
-        // Badge Status Besar di Bagian Bawah Box
+        // 6. Modern Status Badge di Bagian Bawah Box (dengan Geometric Dot anti-aliased)
         int badgeH = 22;
         int badgeY = ry + rh - badgeH - 8;
         int badgeW = rw - 20;
 
         if (isAvail) {
             // Status Hijau: TERSEDIA
-            g2.setColor(new Color(6, 78, 59, 210));
+            g2.setColor(new Color(6, 78, 59, 220));
             g2.fillRoundRect(rx + 10, badgeY, badgeW, badgeH, 8, 8);
-            g2.setColor(new Color(167, 243, 208));
-            g2.setFont(new Font("SansSerif", Font.BOLD, 10));
-            String statusText = "● TERSEDIA";
-            int stW = g2.getFontMetrics().stringWidth(statusText);
-            g2.drawString(statusText, rx + 10 + Math.max(2, (badgeW - stW) / 2), badgeY + 15);
+
+            int dotSize = 6;
+            String text = "TERSEDIA";
+            g2.setFont(ModernUIHelper.fontBold(10));
+            int textW = g2.getFontMetrics().stringWidth(text);
+            int contentW = dotSize + 6 + textW;
+            int startX = rx + 10 + Math.max(4, (badgeW - contentW) / 2);
+
+            g2.setColor(new Color(52, 211, 153)); // Emerald 400
+            g2.fillOval(startX, badgeY + (badgeH - dotSize) / 2, dotSize, dotSize);
+            g2.setColor(new Color(209, 250, 229)); // Emerald 100
+            g2.drawString(text, startX + dotSize + 6, badgeY + 15);
         } else {
             // Status Merah: TERPAKAI
-            g2.setColor(new Color(127, 29, 29, 220));
+            g2.setColor(new Color(127, 29, 29, 230));
             g2.fillRoundRect(rx + 10, badgeY, badgeW, badgeH, 8, 8);
-            g2.setColor(new Color(254, 202, 202));
-            g2.setFont(new Font("SansSerif", Font.BOLD, 10));
-            String statusText = "■ TERPAKAI";
-            int stW = g2.getFontMetrics().stringWidth(statusText);
-            g2.drawString(statusText, rx + 10 + Math.max(2, (badgeW - stW) / 2), badgeY + 15);
+
+            int dotSize = 6;
+            String text = "TERPAKAI";
+            g2.setFont(ModernUIHelper.fontBold(10));
+            int textW = g2.getFontMetrics().stringWidth(text);
+            int contentW = dotSize + 6 + textW;
+            int startX = rx + 10 + Math.max(4, (badgeW - contentW) / 2);
+
+            g2.setColor(new Color(248, 113, 113)); // Rose 400
+            g2.fillOval(startX, badgeY + (badgeH - dotSize) / 2, dotSize, dotSize);
+            g2.setColor(new Color(254, 226, 226)); // Rose 100
+            g2.drawString(text, startX + dotSize + 6, badgeY + 15);
         }
 
         // Jika mode edit layout, gambar indikator titik drag koordinat (X, Y)
         if (layoutEditMode) {
             g2.setColor(Color.WHITE);
-            g2.setFont(new Font("SansSerif", Font.BOLD, 9));
+            g2.setFont(ModernUIHelper.fontBold(9));
             g2.drawString("📍 (" + rx + ", " + ry + ") [" + rw + "x" + rh + "]", rx + 10, ry + rh - 34);
 
             if (isSelected) {
                 // Floating dimension chip di atas objek (ala Figma / Excalidraw)
                 String dimPill = rw + " × " + rh + " px";
-                g2.setFont(new Font("SansSerif", Font.BOLD, 10));
+                g2.setFont(ModernUIHelper.fontBold(10));
                 int dimW = g2.getFontMetrics().stringWidth(dimPill);
-                int pillX = rx + Math.max(0, (rw - dimW) / 2 - 8);
-                int pillY = Math.max(4, ry - 22);
+                int dimPillX = rx + Math.max(0, (rw - dimW) / 2 - 8);
+                int dimPillY = Math.max(4, ry - 22);
                 g2.setColor(new Color(15, 23, 42, 220));
-                g2.fillRoundRect(pillX, pillY, dimW + 16, 18, 8, 8);
+                g2.fillRoundRect(dimPillX, dimPillY, dimW + 16, 18, 8, 8);
                 g2.setColor(Color.WHITE);
-                g2.drawString(dimPill, pillX + 8, pillY + 13);
+                g2.drawString(dimPill, dimPillX + 8, dimPillY + 13);
 
                 // Gambar corner handles modern
                 g2.setColor(COLOR_SELECTED_BORDER);
@@ -446,7 +631,7 @@ public class InteractiveFloorPlanPanel extends JPanel {
         g2.setColor(new Color(226, 232, 240, 180));
         g2.fillRect(40, 240, w - 80, 80);
         g2.setColor(new Color(148, 163, 184));
-        g2.setFont(new Font("SansSerif", Font.BOLD, 12));
+        g2.setFont(ModernUIHelper.fontBold(12));
         g2.drawString("SELASAR / KORIDOR UTAMA", (w / 2) - 80, 285);
     }
 }

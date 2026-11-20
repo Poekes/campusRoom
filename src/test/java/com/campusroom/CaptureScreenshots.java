@@ -104,6 +104,7 @@ public class CaptureScreenshots {
 
         System.out.println("All screenshots successfully generated in screenshots/");
         frame.dispose();
+        System.exit(0);
     }
 
     private static void saveComponent(JFrame frame, String filename, int w, int h) throws Exception {

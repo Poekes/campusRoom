@@ -4,6 +4,8 @@ import com.campusroom.dao.DatabaseHelper;
 import com.campusroom.service.AuthService;
 import com.campusroom.ui.LoginDialog;
 import com.campusroom.ui.MainFrame;
+import com.campusroom.ui.ModernUIHelper;
+import java.awt.Font;
 import javax.swing.*;
 
 /**
@@ -15,11 +17,24 @@ public class CampusRoomApp {
         // Terapkan Modern FlatLaf Look and Feel jika tersedia
         try {
             UIManager.setLookAndFeel("com.formdev.flatlaf.FlatLightLaf");
+            
+            // Set Modern Typography globally
+            Font baseFont = ModernUIHelper.fontPlain(12);
+            UIManager.put("defaultFont", baseFont);
+            UIManager.put("Label.font", ModernUIHelper.fontPlain(12));
+            UIManager.put("Button.font", ModernUIHelper.font(java.awt.Font.BOLD, 12));
+            UIManager.put("ComboBox.font", ModernUIHelper.fontPlain(12));
+            UIManager.put("TextField.font", ModernUIHelper.fontPlain(12));
+            UIManager.put("Table.font", ModernUIHelper.fontPlain(12));
+            UIManager.put("TableHeader.font", ModernUIHelper.fontBold(11));
+            UIManager.put("TabbedPane.font", ModernUIHelper.fontBold(12));
+
             // Modern UI Styling Enhancements
             UIManager.put("Button.arc", 10);
             UIManager.put("Component.arc", 10);
-            UIManager.put("ProgressBar.arc", 10);
+            UIManager.put("ComboBox.arc", 10);
             UIManager.put("TextComponent.arc", 10);
+            UIManager.put("ProgressBar.arc", 10);
             UIManager.put("ScrollBar.thumbArc", 999);
             UIManager.put("ScrollBar.thumbInsets", new java.awt.Insets(2, 2, 2, 2));
             UIManager.put("ScrollBar.width", 10);
