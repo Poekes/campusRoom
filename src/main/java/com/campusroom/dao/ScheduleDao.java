@@ -84,6 +84,73 @@ public class ScheduleDao {
         }
     }
 
+    public List<String> getAllUniqueLecturers() {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT DISTINCT lecturer_name FROM regular_schedules " +
+                "WHERE lecturer_name IS NOT NULL AND TRIM(lecturer_name) != '' " +
+                "ORDER BY lecturer_name ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                list.add(rs.getString("lecturer_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public List<RegularSchedule> getSchedulesByLecturer(String lecturerName) {
+        List<RegularSchedule> list = new ArrayList<>();
+        String sql = "SELECT s.*, r.code AS room_code FROM regular_schedules s " +
+                "JOIN rooms r ON s.room_id = r.id " +
+                "WHERE LOWER(TRIM(s.lecturer_name)) = LOWER(TRIM(?)) " +
+                "ORDER BY CASE s.day_of_week " +
+                "WHEN 'Senin' THEN 1 WHEN 'Selasa' THEN 2 WHEN 'Rabu' THEN 3 " +
+                "WHEN 'Kamis' THEN 4 WHEN 'Jumat' THEN 5 WHEN 'Sabtu' THEN 6 ELSE 7 END, " +
+                "s.start_time ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, lecturerName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    RegularSchedule s = mapSchedule(rs);
+                    s.setRoomCode(rs.getString("room_code"));
+                    list.add(s);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public List<RegularSchedule> getSchedulesByRoomId(int roomId) {
+        List<RegularSchedule> list = new ArrayList<>();
+        String sql = "SELECT s.*, r.code AS room_code FROM regular_schedules s " +
+                "JOIN rooms r ON s.room_id = r.id " +
+                "WHERE s.room_id = ? " +
+                "ORDER BY CASE s.day_of_week " +
+                "WHEN 'Senin' THEN 1 WHEN 'Selasa' THEN 2 WHEN 'Rabu' THEN 3 " +
+                "WHEN 'Kamis' THEN 4 WHEN 'Jumat' THEN 5 WHEN 'Sabtu' THEN 6 ELSE 7 END, " +
+                "s.start_time ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, roomId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    RegularSchedule s = mapSchedule(rs);
+                    s.setRoomCode(rs.getString("room_code"));
+                    list.add(s);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
     private RegularSchedule mapSchedule(ResultSet rs) throws SQLException {
         return new RegularSchedule(
                 rs.getInt("id"),

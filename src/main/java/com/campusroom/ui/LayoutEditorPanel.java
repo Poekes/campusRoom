@@ -105,7 +105,27 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         // 3. Island Kanan: Blueprint & Simpan Dokumen
         headerContainer.add(createDocumentIsland(), BorderLayout.EAST);
 
-        add(headerContainer, BorderLayout.NORTH);
+        JPanel topWrapper = new JPanel(new BorderLayout());
+        topWrapper.add(headerContainer, BorderLayout.NORTH);
+        topWrapper.add(createEditorHintBar(), BorderLayout.SOUTH);
+
+        add(topWrapper, BorderLayout.NORTH);
+    }
+
+    private JPanel createEditorHintBar() {
+        JPanel hintBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 5));
+        hintBar.setBackground(new Color(238, 242, 255));
+        hintBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(199, 210, 254)));
+
+        JLabel lblHint = new JLabel("<html><b>Panduan Edit Denah:</b> " +
+                "<b>1. Pilih:</b> Klik ruangan &nbsp;•&nbsp; " +
+                "<b>2. Pindah Posisi:</b> Drag/geser ruangan &nbsp;•&nbsp; " +
+                "<b>3. Ubah Ukuran:</b> Tarik sudut oranye kanan bawah &nbsp;•&nbsp; " +
+                "<b>4. Edit Data:</b> Klik ganda ruangan atau tekan <i>Edit Properti</i></html>");
+        lblHint.setFont(ModernUIHelper.fontPlain(11));
+        lblHint.setForeground(new Color(55, 48, 163));
+        hintBar.add(lblHint);
+        return hintBar;
     }
 
     /**
@@ -226,11 +246,11 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
 
         island.add(createToolSeparator());
 
-        // Tool 7: Inspector Modal (FITUR UTAMA: Modal Dialog Properti Ruangan)
-        btnToolInspector = createToolButton("⚙", null, "Buka Dialog Modal Detail & Koordinat Ruangan (P / Enter)", true, e -> openRoomInspectorModal(activeRoom));
+        // Tool 7: Edit Properti Ruangan (Modal Dialog Properti & Dimensi)
+        btnToolInspector = createToolButton("⚙", "Edit", "Buka Dialog Edit Data & Ukuran Ruangan (P / Enter)", true, e -> openRoomInspectorModal(activeRoom));
         btnToolInspector.setBackground(new Color(238, 242, 255)); // Indigo 50
         btnToolInspector.setForeground(new Color(79, 70, 229));    // Indigo 600
-        btnToolInspector.setPreferredSize(new Dimension(28, 28));
+        btnToolInspector.setPreferredSize(new Dimension(56, 28));
         island.add(btnToolInspector);
 
         // Tool 8: Hapus Ruangan
@@ -250,6 +270,15 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         });
         btnToolResetView.setPreferredSize(new Dimension(28, 28));
         island.add(btnToolResetView);
+
+        // Tool 10: Putar Denah 90° (POV)
+        JButton btnToolRotate = createToolButton("↻", null, "Putar Denah 90° Searah Jarum Jam (POV)", false, e -> {
+            if (floorCanvas != null) {
+                floorCanvas.rotateClockwise();
+            }
+        });
+        btnToolRotate.setPreferredSize(new Dimension(28, 28));
+        island.add(btnToolRotate);
 
         return island;
     }
@@ -426,7 +455,7 @@ public class LayoutEditorPanel extends JPanel implements InteractiveFloorPlanPan
         lblFooterStatus.setForeground(new Color(71, 85, 105));
         leftPanel.add(lblFooterStatus);
 
-        btnFooterInspector = new JButton("⚙ Buka Properti Ruangan (Modal)");
+        btnFooterInspector = new JButton("⚙ Edit Data & Ukuran Ruangan");
         btnFooterInspector.setFont(new Font("SansSerif", Font.BOLD, 10));
         btnFooterInspector.setForeground(new Color(79, 70, 229));
         btnFooterInspector.setBackground(new Color(238, 242, 255));

@@ -124,5 +124,65 @@ public class BookingServiceTest {
         // 3. Admin Sarpras menyetujui
         ServiceResult<Void> adminResult = bookingService.approveByAdmin(target.getId(), true, "Approval final oleh Admin Sarpras");
         Assertions.assertTrue(adminResult.isSuccess());
+
+        // 4. Verifikasi Status FIKS (DISETUJUI) tidak dapat diubah / dibatalkan
+        Booking fixedBooking = bookingService.getBookingById(target.getId());
+        Assertions.assertNotNull(fixedBooking);
+        Assertions.assertTrue(bookingService.isBookingFixed(fixedBooking));
+        Assertions.assertTrue(fixedBooking.getStatusBadgeText().contains("FIKS"));
+
+        ServiceResult<Void> reValidate = bookingService.validateBySecretary(target.getId(), false, "Coba ubah");
+        Assertions.assertFalse(reValidate.isSuccess(), "Booking FIKS tidak boleh diubah oleh sekdek");
+
+        ServiceResult<Void> reApprove = bookingService.approveByAdmin(target.getId(), false, "Coba tolak setelah fiks");
+        Assertions.assertFalse(reApprove.isSuccess(), "Booking FIKS tidak boleh diubah oleh admin");
+
+        ServiceResult<Void> cancelFixed = bookingService.cancelBooking(target.getId(), null);
+        Assertions.assertFalse(cancelFixed.isSuccess(), "Booking FIKS tidak boleh dibatalkan");
+    }
+
+    @Test
+    public void testBookingH1RuleAndCancelPending() {
+        Room room = masterDataService.getRoomById(2);
+        Assertions.assertNotNull(room);
+
+        // 1. Booking pada hari H (hari ini) harus ditolak
+        ServiceResult<Booking> sameDay = bookingService.createBooking(
+                room, LocalDate.now(), "19:00", "21:00",
+                "Uji Coba Layanan Bisnis H0", "Dr. Test", "250111099",
+                "Tester", "0812", "Hari H", null
+        );
+        Assertions.assertFalse(sameDay.isSuccess(), "Booking hari H wajib ditolak (maks H-1)");
+        Assertions.assertTrue(sameDay.getMessage().contains("H-1"));
+
+        // 2. Booking pada tanggal lampau harus ditolak
+        ServiceResult<Booking> pastDay = bookingService.createBooking(
+                room, LocalDate.now().minusDays(1), "19:00", "21:00",
+                "Uji Coba Layanan Bisnis Past", "Dr. Test", "250111099",
+                "Tester", "0812", "Lampau", null
+        );
+        Assertions.assertFalse(pastDay.isSuccess(), "Booking tanggal lampau wajib ditolak");
+
+        // 3. Booking pada H+1 (atau Minggu depan) berhasil dan bisa dibatalkan saat masih MENUNGGU_SEKDEK
+        LocalDate nextSunday = LocalDate.now().plusDays(1);
+        while (nextSunday.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+            nextSunday = nextSunday.plusDays(1);
+        }
+        ServiceResult<Booking> validFuture = bookingService.createBooking(
+                room, nextSunday, "19:00", "21:00",
+                "Uji Coba Layanan Bisnis Cancel", "Dr. Test", "250111099",
+                "Tester", "0812", "Pending", null
+        );
+        Assertions.assertTrue(validFuture.isSuccess(), "Booking >= H+1 harus berhasil: " + validFuture.getMessage());
+
+        // Cari di DB lalu batalkan
+        List<Booking> pendingList = bookingService.getBookingsByStatus("MENUNGGU_SEKDEK");
+        Booking created = pendingList.stream()
+                .filter(b -> validFuture.getData().getBookingCode().equals(b.getBookingCode()))
+                .findFirst().orElse(null);
+        Assertions.assertNotNull(created);
+
+        ServiceResult<Void> cancelOk = bookingService.cancelBooking(created.getId(), null);
+        Assertions.assertTrue(cancelOk.isSuccess(), "Booking yang belum fiks harus bisa dibatalkan");
     }
 }

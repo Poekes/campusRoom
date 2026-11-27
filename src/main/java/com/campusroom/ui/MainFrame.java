@@ -1,18 +1,22 @@
 package com.campusroom.ui;
 
+import com.campusroom.model.Booking;
 import com.campusroom.model.Building;
 import com.campusroom.model.Campus;
+import com.campusroom.model.RegularSchedule;
 import com.campusroom.model.Room;
 import com.campusroom.model.User;
 import com.campusroom.service.AuthService;
 import com.campusroom.service.AvailabilityService;
 import com.campusroom.service.BookingService;
 import com.campusroom.service.MasterDataService;
+import com.campusroom.service.ScheduleService;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -35,6 +39,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     private final MasterDataService masterDataService = new MasterDataService();
     private final BookingService bookingService = new BookingService();
     private final AvailabilityService availabilityService = new AvailabilityService();
+    private final ScheduleService scheduleService = new ScheduleService();
     private boolean isUpdatingFloorCombo = false;
 
     // Interactive Sidebar
@@ -60,6 +65,15 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     private JButton btnZoomIn;
     private JButton btnZoomOut;
     private JButton btnResetZoom;
+
+    // POV Rotation Controls
+    private JLabel lblRotationAngle;
+    private JButton btnRotateCW;
+    private JButton btnRotateCCW;
+    private JButton btnResetRotation;
+
+    // Quick Search on Floor Plan
+    private JTextField txtFloorSearch;
 
     // Card Layout Views
     private CardLayout cardLayout;
@@ -89,6 +103,11 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     private JLabel lblSidebarFloor;
     private JLabel lblSidebarFacilities;
     private JLabel lblSidebarOccupant;
+    private JLabel lblSidebarAgendaTitle;
+    private JComboBox<String> cbSidebarScheduleScope;
+    private JPanel pnlScheduleListContainer;
+    private JScrollPane scrollScheduleList;
+    private int sidebarScheduleCardCount = 0;
     private JButton btnSidebarBook;
 
     // Floor Plan Stats and Legend (Scoped to Floor Plan)
@@ -100,6 +119,13 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
     private List<Room> currentRooms;
     private Room selectedRoom;
+
+    // Dirty State Flags untuk Persistensi State UI antar navigasi menu
+    private boolean isFloorPlanDirty = false;
+    private boolean isStudentBookingDirty = false;
+    private boolean isSecretaryDirty = false;
+    private boolean isAdminDirty = false;
+    private boolean isEditorInitialized = false;
 
     public MainFrame() {
         setTitle("CampusRoom — Aplikasi Manajemen & Reservasi Ruangan Kampus");
@@ -166,7 +192,12 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         cardPanel.add(studentBookingPanel, "booking");
 
         // View 3: Validasi Pengajuan (Sekdek)
-        secretaryPanel = new SecretaryPanel(() -> refreshAvailability());
+        secretaryPanel = new SecretaryPanel(() -> {
+            isFloorPlanDirty = true;
+            isStudentBookingDirty = true;
+            isAdminDirty = true;
+            refreshAvailability();
+        });
         cardPanel.add(secretaryPanel.getValidationPanel(), "secValidation");
 
         // View 4: Jadwal Tetap Perkuliahan (Sekdek)
@@ -178,6 +209,9 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
             if (layoutEditorPanel != null) {
                 layoutEditorPanel.loadCampuses();
             }
+            isFloorPlanDirty = true;
+            isStudentBookingDirty = true;
+            isSecretaryDirty = true;
             refreshAvailability();
         });
         cardPanel.add(adminPanel.getApprovalPanel(), "adminApproval");
@@ -187,6 +221,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         // View 8: Visual Layout Editor
         layoutEditorPanel = new LayoutEditorPanel(() -> {
             syncLocationFromEditor();
+            isAdminDirty = true;
             refreshAvailability();
         });
         cardPanel.add(layoutEditorPanel, "layoutEditor");
@@ -223,6 +258,34 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 toggleInspector();
+            }
+        });
+
+        // Keyboard shortcut: Ctrl + R (atau Cmd + R) untuk putar denah searah jarum jam (+90°)
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+                "rotateFloorPlanCW"
+        );
+        getRootPane().getActionMap().put("rotateFloorPlanCW", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (floorCanvas != null) {
+                    floorCanvas.rotateClockwise();
+                }
+            }
+        });
+
+        // Keyboard shortcut: Ctrl + Shift + R untuk reset orientasi denah ke 0°
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_R, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | java.awt.event.InputEvent.SHIFT_DOWN_MASK),
+                "resetFloorPlanRotation"
+        );
+        getRootPane().getActionMap().put("resetFloorPlanRotation", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (floorCanvas != null) {
+                    floorCanvas.resetRotation();
+                }
             }
         });
     }
@@ -333,9 +396,14 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         lblRoleBadge.setForeground(new Color(2, 132, 199));   // Sky 600
         lblRoleBadge.setBorder(new EmptyBorder(4, 10, 4, 10));
 
+        JButton btnContactAdmin = ModernUIHelper.createStyledButton("WA Admin", new Color(220, 252, 231), new Color(22, 101, 52), 11, true);
+        btnContactAdmin.setToolTipText("Hubungi Admin Sarpras langsung via WhatsApp (" + ModernUIHelper.ADMIN_PHONE + ")");
+        btnContactAdmin.addActionListener(e -> ModernUIHelper.showContactAdminDialog(this));
+
         JButton btnQuickSwitch = ModernUIHelper.createStyledButton("Ganti Akun", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
         btnQuickSwitch.addActionListener(e -> showRoleSwitchMenu());
 
+        rightPanel.add(btnContactAdmin);
         rightPanel.add(lblDateChip);
         rightPanel.add(lblRoleBadge);
         rightPanel.add(btnQuickSwitch);
@@ -372,6 +440,11 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         floorCanvas.addZoomChangeListener(zoom -> {
             if (lblZoomLevel != null) {
                 lblZoomLevel.setText((int) Math.round(zoom * 100) + "%");
+            }
+        });
+        floorCanvas.addRotationChangeListener(degrees -> {
+            if (lblRotationAngle != null) {
+                lblRotationAngle.setText(degrees + "°");
             }
         });
         JScrollPane canvasScroll = new JScrollPane(floorCanvas);
@@ -566,10 +639,94 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
 
         zoomGroup.add(zoomPill);
 
-        JLabel lblNavHint = new JLabel("• Ctrl + Scroll Mouse untuk Zoom • Drag Klik-Kanan untuk Pan");
-        lblNavHint.setFont(ModernUIHelper.fontPlain(10));
-        lblNavHint.setForeground(ModernUIHelper.TEXT_MUTED);
-        zoomGroup.add(lblNavHint);
+        // Separator & POV Rotation Capsule
+        JSeparator sepZoomPov = new JSeparator(SwingConstants.VERTICAL);
+        sepZoomPov.setPreferredSize(new Dimension(1, 18));
+        sepZoomPov.setForeground(ModernUIHelper.BORDER_LIGHT);
+        zoomGroup.add(sepZoomPov);
+
+        JLabel lblPovTitle = new JLabel("POV:");
+        lblPovTitle.setFont(ModernUIHelper.fontBold(10));
+        lblPovTitle.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        zoomGroup.add(lblPovTitle);
+
+        JPanel povPill = ModernUIHelper.createFilterCapsule(new FlowLayout(FlowLayout.CENTER, 2, 1));
+
+        btnRotateCCW = ModernUIHelper.createCompactButton("↺", Color.WHITE, ModernUIHelper.TEXT_DARK, 12, true);
+        btnRotateCCW.setPreferredSize(new Dimension(28, 24));
+        btnRotateCCW.setToolTipText("Putar Denah 90° Berlawanan Jarum Jam (Ctrl + Shift + R)");
+        btnRotateCCW.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.rotateCounterClockwise();
+        });
+        povPill.add(btnRotateCCW);
+
+        lblRotationAngle = new JLabel("0°", SwingConstants.CENTER);
+        lblRotationAngle.setFont(ModernUIHelper.fontBold(10));
+        lblRotationAngle.setForeground(ModernUIHelper.COLOR_PRIMARY);
+        lblRotationAngle.setPreferredSize(new Dimension(38, 24));
+        lblRotationAngle.setToolTipText("Sudut Pandang POV Aktif (Klik untuk Reset ke 0°)");
+        lblRotationAngle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        lblRotationAngle.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (floorCanvas != null) floorCanvas.resetRotation();
+            }
+        });
+        povPill.add(lblRotationAngle);
+
+        btnRotateCW = ModernUIHelper.createCompactButton("↻", Color.WHITE, ModernUIHelper.TEXT_DARK, 12, true);
+        btnRotateCW.setPreferredSize(new Dimension(28, 24));
+        btnRotateCW.setToolTipText("Putar Denah 90° Searah Jarum Jam (Ctrl + R)");
+        btnRotateCW.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.rotateClockwise();
+        });
+        povPill.add(btnRotateCW);
+
+        btnResetRotation = ModernUIHelper.createCompactButton("0°", Color.WHITE, ModernUIHelper.TEXT_SECONDARY, 10, false);
+        btnResetRotation.setPreferredSize(new Dimension(34, 24));
+        btnResetRotation.setToolTipText("Kembalikan Orientasi POV ke Default (0°)");
+        btnResetRotation.addActionListener(e -> {
+            if (floorCanvas != null) floorCanvas.resetRotation();
+        });
+        povPill.add(btnResetRotation);
+
+        zoomGroup.add(povPill);
+
+        // Separator & Quick Room Search Capsule
+        JSeparator sepPovSearch = new JSeparator(SwingConstants.VERTICAL);
+        sepPovSearch.setPreferredSize(new Dimension(1, 18));
+        sepPovSearch.setForeground(ModernUIHelper.BORDER_LIGHT);
+        zoomGroup.add(sepPovSearch);
+
+        JPanel searchCapsule = ModernUIHelper.createFilterCapsule(new FlowLayout(FlowLayout.LEFT, 4, 1));
+        JLabel lblSearchTag = new JLabel("Cari:");
+        lblSearchTag.setFont(ModernUIHelper.fontBold(10));
+        lblSearchTag.setForeground(ModernUIHelper.TEXT_SECONDARY);
+        searchCapsule.add(lblSearchTag);
+
+        txtFloorSearch = new JTextField(12);
+        txtFloorSearch.setPreferredSize(new Dimension(125, 24));
+        txtFloorSearch.putClientProperty("JTextField.placeholderText", "Kode / nama ruang...");
+        txtFloorSearch.setToolTipText("Ketik kode atau nama ruangan untuk sorot langsung (Enter: cari semua lantai)");
+        ModernUIHelper.styleTextField(txtFloorSearch);
+        txtFloorSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { performRoomSearch(txtFloorSearch.getText().trim(), false); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { performRoomSearch(txtFloorSearch.getText().trim(), false); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { performRoomSearch(txtFloorSearch.getText().trim(), false); }
+        });
+        txtFloorSearch.addActionListener(e -> performRoomSearch(txtFloorSearch.getText().trim(), true));
+        searchCapsule.add(txtFloorSearch);
+
+        JButton btnClearSearch = ModernUIHelper.createCompactButton("✕", Color.WHITE, ModernUIHelper.TEXT_SECONDARY, 10, false);
+        btnClearSearch.setPreferredSize(new Dimension(22, 22));
+        btnClearSearch.setToolTipText("Bersihkan pencarian ruangan");
+        btnClearSearch.addActionListener(e -> {
+            txtFloorSearch.setText("");
+            if (floorCanvas != null) floorCanvas.setSearchHighlightRoom(null);
+        });
+        searchCapsule.add(btnClearSearch);
+
+        zoomGroup.add(searchCapsule);
 
         row2.add(zoomGroup, BorderLayout.WEST);
 
@@ -715,12 +872,12 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         // Card 1: Empty State
         inspectorBodyContainer.add(createInspectorEmptyStatePanel(), "empty");
 
-        // Card 2: Specification Card
-        JPanel cardSpec = new JPanel(new GridLayout(4, 1, 0, 6));
+        // Card 2: Specification Card (Compact Summary) + Scrollable Schedule Feed
+        JPanel cardSpec = new JPanel(new GridLayout(4, 1, 0, 5));
         cardSpec.setBackground(new Color(248, 250, 252));
         cardSpec.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
-                new EmptyBorder(10, 12, 10, 12)
+                new EmptyBorder(8, 10, 8, 10)
         ));
 
         lblSidebarCapacity = new JLabel("<html><b style='color:#64748b; font-size:9px;'>👥 KAPASITAS & TIPE</b><br/><span style='color:#334155;'>-</span></html>");
@@ -733,14 +890,56 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         cardSpec.add(lblSidebarFacilities);
         cardSpec.add(lblSidebarOccupant);
 
+        // Scrollable Schedule Agenda Section
+        JPanel agendaSection = new JPanel(new BorderLayout(0, 6));
+        agendaSection.setOpaque(false);
+
+        JPanel agendaHeader = new JPanel(new BorderLayout(6, 0));
+        agendaHeader.setOpaque(false);
+        agendaHeader.setBorder(new EmptyBorder(2, 1, 0, 1));
+
+        lblSidebarAgendaTitle = new JLabel("📅 JADWAL RUANGAN");
+        lblSidebarAgendaTitle.setFont(new Font("SansSerif", Font.BOLD, 10));
+        lblSidebarAgendaTitle.setForeground(new Color(71, 85, 105));
+
+        cbSidebarScheduleScope = new JComboBox<>(new String[]{"Tanggal Ini", "Semua Hari"});
+        cbSidebarScheduleScope.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        cbSidebarScheduleScope.setBackground(Color.WHITE);
+        cbSidebarScheduleScope.setPreferredSize(new Dimension(105, 24));
+        cbSidebarScheduleScope.setToolTipText("Pilih cakupan jadwal yang ditampilkan pada sidebar");
+        cbSidebarScheduleScope.addActionListener(e -> {
+            if (selectedRoom != null) {
+                updateSidebarScheduleFeed(selectedRoom);
+            }
+        });
+
+        agendaHeader.add(lblSidebarAgendaTitle, BorderLayout.WEST);
+        agendaHeader.add(cbSidebarScheduleScope, BorderLayout.EAST);
+
+        pnlScheduleListContainer = new JPanel();
+        pnlScheduleListContainer.setLayout(new BoxLayout(pnlScheduleListContainer, BoxLayout.Y_AXIS));
+        pnlScheduleListContainer.setBackground(new Color(248, 250, 252));
+        pnlScheduleListContainer.setBorder(new EmptyBorder(6, 6, 6, 6));
+
+        scrollScheduleList = new JScrollPane(pnlScheduleListContainer);
+        scrollScheduleList.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollScheduleList.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollScheduleList.getVerticalScrollBar().setUnitIncrement(14);
+        scrollScheduleList.setBorder(BorderFactory.createLineBorder(new Color(226, 232, 240), 1));
+        scrollScheduleList.getViewport().setBackground(new Color(248, 250, 252));
+
+        agendaSection.add(agendaHeader, BorderLayout.NORTH);
+        agendaSection.add(scrollScheduleList, BorderLayout.CENTER);
+
         JPanel specWrapper = new JPanel(new BorderLayout(0, 8));
         specWrapper.setOpaque(false);
-        specWrapper.add(cardSpec, BorderLayout.CENTER);
+        specWrapper.add(cardSpec, BorderLayout.NORTH);
+        specWrapper.add(agendaSection, BorderLayout.CENTER);
 
-        JLabel lblHint = new JLabel("<html><i>* Klik 2x pada kotak denah untuk melihat informasi lengkap.</i></html>");
+        JLabel lblHint = new JLabel("<html><i>* Scroll ke bawah untuk seluruh jadwal, klik 2x denah untuk detail lengkap.</i></html>");
         lblHint.setFont(new Font("SansSerif", Font.ITALIC, 9));
         lblHint.setForeground(new Color(148, 163, 184));
-        lblHint.setBorder(new EmptyBorder(4, 2, 0, 2));
+        lblHint.setBorder(new EmptyBorder(2, 2, 0, 2));
         specWrapper.add(lblHint, BorderLayout.SOUTH);
 
         inspectorBodyContainer.add(specWrapper, "spec");
@@ -917,8 +1116,10 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 cardLayout.show(cardPanel, "floorPlan");
                 lblBreadcrumbView.setText("Denah Visual Interaktif");
                 lblViewSubtitle.setText("Peta visual ruangan realtime dan status ketersediaan per slot sesi kuliah");
-                syncLocationFromEditor();
-                refreshAvailability();
+                if (isFloorPlanDirty) {
+                    refreshAvailability();
+                    isFloorPlanDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_CATALOG:
                 cardLayout.show(cardPanel, "catalog");
@@ -929,43 +1130,64 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
                 cardLayout.show(cardPanel, "booking");
                 lblBreadcrumbView.setText("Pengajuan Saya");
                 lblViewSubtitle.setText("Portal permohonan peminjaman ruangan kuliah pengganti dan pelacakan status approval");
-                if (studentBookingPanel != null) studentBookingPanel.refreshData();
+                if (isStudentBookingDirty && studentBookingPanel != null) {
+                    studentBookingPanel.refreshData();
+                    isStudentBookingDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_SEC_VALIDATION:
                 cardLayout.show(cardPanel, "secValidation");
                 lblBreadcrumbView.setText("Portal Dekanat / Validasi Pengajuan");
                 lblViewSubtitle.setText("Verifikasi jadwal perkuliahan pengganti mahasiswa terhadap master jadwal perkuliahan tetap");
-                if (secretaryPanel != null) secretaryPanel.refreshData();
+                if (isSecretaryDirty && secretaryPanel != null) {
+                    secretaryPanel.refreshData();
+                    isSecretaryDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_SEC_SCHEDULE:
                 cardLayout.show(cardPanel, "secSchedule");
                 lblBreadcrumbView.setText("Portal Dekanat / Master Jadwal Perkuliahan");
                 lblViewSubtitle.setText("Kelola data jadwal tetap perkuliahan semester untuk mengunci ruangan kuliah secara rutin");
-                if (secretaryPanel != null) secretaryPanel.refreshData();
+                if (isSecretaryDirty && secretaryPanel != null) {
+                    secretaryPanel.refreshData();
+                    isSecretaryDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_ADMIN_APPROVAL:
                 cardLayout.show(cardPanel, "adminApproval");
                 lblBreadcrumbView.setText("Administrator / Approval Akhir");
                 lblViewSubtitle.setText("Persetujuan final reservasi ruangan kuliah dan penetapan alokasi resmi");
-                if (adminPanel != null) adminPanel.refreshData();
+                if (isAdminDirty && adminPanel != null) {
+                    adminPanel.refreshData();
+                    isAdminDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_ADMIN_CAMPUS:
                 cardLayout.show(cardPanel, "adminCampus");
                 lblBreadcrumbView.setText("Administrator / Kelola Kampus & Gedung");
                 lblViewSubtitle.setText("Konfigurasi seluruh lokasi kampus cabang dan gedung bertingkat");
-                if (adminPanel != null) adminPanel.refreshData();
+                if (isAdminDirty && adminPanel != null) {
+                    adminPanel.refreshData();
+                    isAdminDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_ADMIN_ROOMS:
                 cardLayout.show(cardPanel, "adminRooms");
                 lblBreadcrumbView.setText("Administrator / Master Ruangan");
                 lblViewSubtitle.setText("Inventaris seluruh ruangan kuliah, kapasitas kursi, tipe ruangan, dan fasilitas");
-                if (adminPanel != null) adminPanel.refreshData();
+                if (isAdminDirty && adminPanel != null) {
+                    adminPanel.refreshData();
+                    isAdminDirty = false;
+                }
                 break;
             case SidebarNavigationPanel.NAV_LAYOUT_EDITOR:
                 cardLayout.show(cardPanel, "layoutEditor");
                 lblBreadcrumbView.setText("Administrator / Desainer Denah Visual");
                 lblViewSubtitle.setText("Editor tata letak denah interaktif (Toolbar Excalidraw & Inspector Modal)");
-                syncLocationToEditor();
+                if (!isEditorInitialized) {
+                    syncLocationToEditor();
+                    isEditorInitialized = true;
+                }
                 break;
         }
     }
@@ -1226,6 +1448,19 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         if (studentBookingPanel != null) studentBookingPanel.refreshData();
         if (secretaryPanel != null) secretaryPanel.refreshData();
         if (adminPanel != null) adminPanel.refreshData();
+
+        isFloorPlanDirty = false;
+        isStudentBookingDirty = false;
+        isSecretaryDirty = false;
+        isAdminDirty = false;
+    }
+
+    public InteractiveFloorPlanPanel getFloorCanvas() {
+        return floorCanvas;
+    }
+
+    public Room getSelectedRoom() {
+        return selectedRoom;
     }
 
     private void resetSidebarInfo() {
@@ -1243,6 +1478,7 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         if (lblSidebarFloor != null) lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>📍 LOKASI LANTAI</b><br/><span style='color:#94a3b8;'>-</span></html>");
         if (lblSidebarFacilities != null) lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>🛠️ FASILITAS RUANGAN</b><br/><span style='color:#94a3b8;'>-</span></html>");
         if (lblSidebarOccupant != null) lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>📅 PENGGUNAAN SAAT INI</b><br/><span style='color:#94a3b8;'>-</span></html>");
+        updateSidebarScheduleFeed(null);
         if (btnSidebarBook != null) {
             btnSidebarBook.setEnabled(false);
             btnSidebarBook.setText("Ajukan Booking Ruangan");
@@ -1375,6 +1611,217 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         lblSidebarFloor.setText("<html><b style='color:#64748b; font-size:9px;'>📍 LOKASI LANTAI</b><br/><span style='color:#0f172a; font-weight:bold; font-size:11px;'>Lantai " + room.getFloor() + "</span></html>");
         lblSidebarFacilities.setText("<html><b style='color:#64748b; font-size:9px;'>🛠️ FASILITAS RUANGAN</b><br/><span style='color:#334155; font-size:11px;'>" + room.getFacilities() + "</span></html>");
         lblSidebarOccupant.setText("<html><b style='color:#64748b; font-size:9px;'>📅 PENGGUNAAN SAAT INI</b><br/><span style='color:#334155; font-size:11px;'>" + room.getCurrentOccupantInfo() + "</span></html>");
+        updateSidebarScheduleFeed(room);
+    }
+
+    /**
+     * Memperbarui daftar kartu jadwal yang dapat di-scroll di sidebar kanan sesuai ruangan & cakupan waktu aktif.
+     */
+    private void updateSidebarScheduleFeed(Room room) {
+        sidebarScheduleCardCount = 0;
+        if (pnlScheduleListContainer == null) {
+            return;
+        }
+        pnlScheduleListContainer.removeAll();
+
+        if (room == null) {
+            if (lblSidebarAgendaTitle != null) {
+                lblSidebarAgendaTitle.setText("📅 JADWAL RUANGAN");
+            }
+            pnlScheduleListContainer.revalidate();
+            pnlScheduleListContainer.repaint();
+            return;
+        }
+
+        LocalDate targetDate = LocalDate.now();
+        if (txtDate != null) {
+            try {
+                String dateStr = txtDate.getText().trim();
+                if (!dateStr.isEmpty()) {
+                    targetDate = LocalDate.parse(dateStr);
+                }
+            } catch (DateTimeParseException ignored) {
+                targetDate = LocalDate.now();
+            }
+        }
+
+        String targetDayIndo = AvailabilityService.convertDayOfWeekToIndonesian(targetDate.getDayOfWeek());
+        boolean showAllDays = cbSidebarScheduleScope != null && cbSidebarScheduleScope.getSelectedIndex() == 1;
+
+        List<RegularSchedule> regularSchedules = showAllDays
+                ? scheduleService.getSchedulesByRoomId(room.getId())
+                : scheduleService.getSchedulesByRoomAndDay(room.getId(), targetDayIndo);
+
+        List<Booking> allBookings = bookingService.getAllIncomingBookingsForRoom(room.getId());
+        List<Booking> filteredBookings = new ArrayList<>();
+        for (Booking b : allBookings) {
+            if (showAllDays || (b.getBookingDate() != null && b.getBookingDate().equals(targetDate))) {
+                filteredBookings.add(b);
+            }
+        }
+
+        int totalItems = regularSchedules.size() + filteredBookings.size();
+        if (lblSidebarAgendaTitle != null) {
+            String scopeLabel = showAllDays ? "SEMUA JADWAL" : "JADWAL " + targetDayIndo.toUpperCase();
+            lblSidebarAgendaTitle.setText("📅 " + scopeLabel + " (" + totalItems + ")");
+        }
+
+        if (totalItems == 0) {
+            pnlScheduleListContainer.add(createEmptyScheduleTile(showAllDays, targetDayIndo, targetDate));
+        } else {
+            for (RegularSchedule schedule : regularSchedules) {
+                if (sidebarScheduleCardCount > 0) {
+                    pnlScheduleListContainer.add(Box.createVerticalStrut(6));
+                }
+                String timeText = (showAllDays ? schedule.getDayOfWeek() + " • " : "")
+                        + schedule.getStartTime() + " - " + schedule.getEndTime();
+                String subtitle = "Dosen: " + safeText(schedule.getLecturerName(), "-")
+                        + " • Kelas " + safeText(schedule.getClassName(), "-");
+                pnlScheduleListContainer.add(createScheduleCardItem(
+                        "KULIAH TETAP",
+                        new Color(59, 130, 246),
+                        new Color(239, 246, 255),
+                        new Color(29, 78, 216),
+                        timeText,
+                        safeText(schedule.getCourseName(), "-"),
+                        subtitle
+                ));
+                sidebarScheduleCardCount++;
+            }
+
+            for (Booking booking : filteredBookings) {
+                if (sidebarScheduleCardCount > 0) {
+                    pnlScheduleListContainer.add(Box.createVerticalStrut(6));
+                }
+                boolean isFixed = booking.isFixed();
+                Color accent = isFixed ? new Color(16, 185, 129) : new Color(245, 158, 11);
+                Color badgeBg = isFixed ? new Color(236, 253, 245) : new Color(255, 251, 235);
+                Color badgeFg = isFixed ? new Color(5, 150, 105) : new Color(180, 83, 9);
+                String badgeText = isFixed ? "BOOKING FIKS" : "BOOKING PROSES";
+                String datePrefix = (showAllDays && booking.getBookingDate() != null)
+                        ? booking.getBookingDate() + " • "
+                        : "";
+                String timeText = datePrefix + booking.getStartTime() + " - " + booking.getEndTime();
+                String subtitle = "PJ: " + safeText(booking.getStudentName(), "-")
+                        + " (" + safeText(booking.getStatusBadgeText(), booking.getStatus()) + ")";
+                pnlScheduleListContainer.add(createScheduleCardItem(
+                        badgeText,
+                        accent,
+                        badgeBg,
+                        badgeFg,
+                        timeText,
+                        safeText(booking.getCourseName(), safeText(booking.getPurpose(), "Booking Ruangan")),
+                        subtitle
+                ));
+                sidebarScheduleCardCount++;
+            }
+        }
+
+        pnlScheduleListContainer.revalidate();
+        pnlScheduleListContainer.repaint();
+        if (scrollScheduleList != null) {
+            SwingUtilities.invokeLater(() -> scrollScheduleList.getViewport().setViewPosition(new Point(0, 0)));
+        }
+    }
+
+    private JPanel createScheduleCardItem(
+            String badgeText,
+            Color accentColor,
+            Color badgeBg,
+            Color badgeFg,
+            String timeText,
+            String titleText,
+            String subtitleText
+    ) {
+        JPanel card = new JPanel(new BorderLayout(0, 3));
+        card.setBackground(Color.WHITE);
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 4, 1, 1, accentColor),
+                new EmptyBorder(6, 8, 6, 8)
+        ));
+
+        JPanel topRow = new JPanel(new BorderLayout(4, 0));
+        topRow.setOpaque(false);
+
+        JLabel lblTime = new JLabel(timeText);
+        lblTime.setFont(new Font("SansSerif", Font.BOLD, 10));
+        lblTime.setForeground(new Color(51, 65, 85));
+
+        JLabel lblBadge = new JLabel(badgeText);
+        lblBadge.setFont(new Font("SansSerif", Font.BOLD, 8));
+        lblBadge.setOpaque(true);
+        lblBadge.setBackground(badgeBg);
+        lblBadge.setForeground(badgeFg);
+        lblBadge.setBorder(new EmptyBorder(2, 5, 2, 5));
+
+        topRow.add(lblTime, BorderLayout.WEST);
+        topRow.add(lblBadge, BorderLayout.EAST);
+
+        JLabel lblContent = new JLabel(
+                "<html><div style='width:225px;'>"
+                        + "<b style='color:#0f172a; font-size:10px;'>" + escapeHtml(titleText) + "</b><br/>"
+                        + "<span style='color:#64748b; font-size:9px;'>" + escapeHtml(subtitleText) + "</span>"
+                        + "</div></html>"
+        );
+
+        card.add(topRow, BorderLayout.NORTH);
+        card.add(lblContent, BorderLayout.CENTER);
+        Dimension pref = card.getPreferredSize();
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height + 4));
+        return card;
+    }
+
+    private JPanel createEmptyScheduleTile(boolean showAllDays, String targetDayIndo, LocalDate targetDate) {
+        JPanel emptyTile = new JPanel(new BorderLayout());
+        emptyTile.setBackground(Color.WHITE);
+        emptyTile.setAlignmentX(Component.LEFT_ALIGNMENT);
+        emptyTile.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                new EmptyBorder(14, 10, 14, 10)
+        ));
+
+        String text = showAllDays
+                ? "Tidak ada jadwal tetap maupun pengajuan booking aktif untuk ruangan ini."
+                : "Tidak ada jadwal kelas atau booking pada " + targetDayIndo + " (" + targetDate + ").";
+        JLabel lblEmpty = new JLabel(
+                "<html><div style='width:225px; text-align:center;'>"
+                        + "<span style='color:#059669; font-weight:bold; font-size:10px;'>✔ Jadwal Kosong</span><br/>"
+                        + "<span style='color:#64748b; font-size:9px;'>" + escapeHtml(text) + "</span>"
+                        + "</div></html>",
+                SwingConstants.CENTER
+        );
+        emptyTile.add(lblEmpty, BorderLayout.CENTER);
+        Dimension pref = emptyTile.getPreferredSize();
+        emptyTile.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height + 6));
+        return emptyTile;
+    }
+
+    private String safeText(String value, String fallback) {
+        return (value != null && !value.trim().isEmpty()) ? value.trim() : fallback;
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
+    public JScrollPane getSidebarScheduleScrollPane() {
+        return scrollScheduleList;
+    }
+
+    public int getSidebarScheduleCardCount() {
+        return sidebarScheduleCardCount;
+    }
+
+    public JComboBox<String> getSidebarScheduleScopeCombo() {
+        return cbSidebarScheduleScope;
+    }
+
+    public String getSidebarAgendaTitleText() {
+        return lblSidebarAgendaTitle != null ? lblSidebarAgendaTitle.getText() : "";
     }
 
     @Override
@@ -1385,6 +1832,79 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
     @Override
     public void onRoomMoved(Room room, int newX, int newY) {
         // Hanya di LayoutEditorPanel
+    }
+
+    private void performRoomSearch(String query, boolean searchAcrossBuilding) {
+        if (floorCanvas == null) return;
+        if (query == null || query.isEmpty()) {
+            floorCanvas.setSearchHighlightRoom(null);
+            return;
+        }
+
+        String lower = query.toLowerCase();
+        Room matched = findBestRoomMatch(currentRooms, lower);
+
+        if (matched == null && searchAcrossBuilding) {
+            Building b = (Building) cbBuilding.getSelectedItem();
+            Campus c = (Campus) cbCampus.getSelectedItem();
+            if (b != null && c != null) {
+                List<Room> buildingRooms = masterDataService.getRoomsByBuilding(b.getId());
+                Room crossFloorMatch = findBestRoomMatch(buildingRooms, lower);
+                if (crossFloorMatch != null) {
+                    setSelectedLocation(c.getId(), b.getId(), crossFloorMatch.getFloor());
+                    matched = findBestRoomMatch(currentRooms, lower);
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                            "Ruangan dengan kata kunci \"" + query + "\" tidak ditemukan di " + b.getName() + ".",
+                            "Pencarian Ruangan", JOptionPane.INFORMATION_MESSAGE);
+                }
+            }
+        }
+
+        if (matched != null) {
+            floorCanvas.setSearchHighlightRoom(matched);
+            floorCanvas.setSelectedRoom(matched);
+            onRoomSelected(matched);
+            centerCanvasOnRoom(matched);
+        } else {
+            floorCanvas.setSearchHighlightRoom(null);
+        }
+    }
+
+    private Room findBestRoomMatch(List<Room> roomList, String lowerQuery) {
+        if (roomList == null || roomList.isEmpty()) return null;
+        // Prioritaskan kecocokan kode persis atau awalan kode
+        for (Room r : roomList) {
+            if (r.getCode() != null && r.getCode().toLowerCase().equals(lowerQuery)) {
+                return r;
+            }
+        }
+        for (Room r : roomList) {
+            if (r.getCode() != null && r.getCode().toLowerCase().contains(lowerQuery)) {
+                return r;
+            }
+        }
+        for (Room r : roomList) {
+            if (r.getName() != null && r.getName().toLowerCase().contains(lowerQuery)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    private void centerCanvasOnRoom(Room room) {
+        if (floorCanvas == null || room == null) return;
+        Rectangle bounds = floorCanvas.getScreenBoundsForRoom(room);
+        if (bounds != null) {
+            int pad = 60;
+            Rectangle padded = new Rectangle(
+                    Math.max(0, bounds.x - pad),
+                    Math.max(0, bounds.y - pad),
+                    bounds.width + pad * 2,
+                    bounds.height + pad * 2
+            );
+            floorCanvas.scrollRectToVisible(padded);
+        }
     }
 
     private void openBookingDialog(Room room) {
@@ -1406,6 +1926,10 @@ public class MainFrame extends JFrame implements InteractiveFloorPlanPanel.Floor
         }
 
         BookingDialog dialog = new BookingDialog(this, room, date, startTime, endTime, () -> {
+            isFloorPlanDirty = true;
+            isStudentBookingDirty = true;
+            isSecretaryDirty = true;
+            isAdminDirty = true;
             refreshAvailability();
             switchToView(SidebarNavigationPanel.NAV_BOOKING);
         });

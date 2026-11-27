@@ -78,6 +78,11 @@ public class RoomCatalogPanel extends JPanel {
         txtSearch.setPreferredSize(new Dimension(210, 30));
         txtSearch.putClientProperty("JTextField.placeholderText", "Nama, kode, fasilitas...");
         txtSearch.addActionListener(e -> filterRooms());
+        txtSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { filterRooms(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { filterRooms(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { filterRooms(); }
+        });
         toolbar.add(txtSearch);
 
         JLabel lblType = new JLabel("Tipe:");

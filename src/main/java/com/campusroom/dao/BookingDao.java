@@ -112,6 +112,96 @@ public class BookingDao {
         }
     }
 
+    public Booking getBookingById(int bookingId) {
+        String sql = "SELECT b.*, r.code AS room_code, r.name AS room_name FROM bookings b " +
+                "JOIN rooms r ON b.room_id = r.id " +
+                "WHERE b.id = ?;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, bookingId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapBooking(rs);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public List<Booking> getActiveBookingsByRoom(int roomId) {
+        List<Booking> list = new ArrayList<>();
+        String sql = "SELECT b.*, r.code AS room_code, r.name AS room_name FROM bookings b " +
+                "JOIN rooms r ON b.room_id = r.id " +
+                "WHERE b.room_id = ? AND b.status IN ('DIVALIDASI_SEKDEK', 'DISETUJUI') " +
+                "ORDER BY b.booking_date ASC, b.start_time ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, roomId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapBooking(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public List<Booking> getApprovedBookingsByRoomId(int roomId) {
+        List<Booking> list = new ArrayList<>();
+        String sql = "SELECT b.*, r.code AS room_code, r.name AS room_name FROM bookings b " +
+                "JOIN rooms r ON b.room_id = r.id " +
+                "WHERE b.room_id = ? AND b.status = 'DISETUJUI' " +
+                "ORDER BY b.booking_date ASC, b.start_time ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, roomId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapBooking(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public List<Booking> getAllIncomingBookingsByRoomId(int roomId) {
+        List<Booking> list = new ArrayList<>();
+        String sql = "SELECT b.*, r.code AS room_code, r.name AS room_name FROM bookings b " +
+                "JOIN rooms r ON b.room_id = r.id " +
+                "WHERE b.room_id = ? AND b.status != 'DITOLAK' " +
+                "ORDER BY b.booking_date ASC, b.start_time ASC;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, roomId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapBooking(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public boolean deleteBooking(int bookingId) {
+        String sql = "DELETE FROM bookings WHERE id = ?;";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, bookingId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     public boolean updateSecretaryValidation(int bookingId, String status, String note) {
         String sql = "UPDATE bookings SET status = ?, secretary_note = ? WHERE id = ?;";
         try (Connection conn = DatabaseHelper.getConnection();

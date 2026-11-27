@@ -1,11 +1,15 @@
 package com.campusroom.service;
 
+import com.campusroom.dao.BookingDao;
 import com.campusroom.dao.BuildingDao;
 import com.campusroom.dao.CampusDao;
 import com.campusroom.dao.FloorPlanDao;
 import com.campusroom.dao.RoomDao;
+import com.campusroom.dao.ScheduleDao;
+import com.campusroom.model.Booking;
 import com.campusroom.model.Building;
 import com.campusroom.model.Campus;
+import com.campusroom.model.RegularSchedule;
 import com.campusroom.model.Room;
 import java.util.List;
 
@@ -18,12 +22,16 @@ public class MasterDataService {
     private final BuildingDao buildingDao;
     private final RoomDao roomDao;
     private final FloorPlanDao floorPlanDao;
+    private final ScheduleDao scheduleDao;
+    private final BookingDao bookingDao;
 
     public MasterDataService() {
         this.campusDao = new CampusDao();
         this.buildingDao = new BuildingDao();
         this.roomDao = new RoomDao();
         this.floorPlanDao = new FloorPlanDao();
+        this.scheduleDao = new ScheduleDao();
+        this.bookingDao = new BookingDao();
     }
 
     public MasterDataService(CampusDao campusDao, BuildingDao buildingDao, RoomDao roomDao, FloorPlanDao floorPlanDao) {
@@ -31,6 +39,8 @@ public class MasterDataService {
         this.buildingDao = buildingDao;
         this.roomDao = roomDao;
         this.floorPlanDao = floorPlanDao;
+        this.scheduleDao = new ScheduleDao();
+        this.bookingDao = new BookingDao();
     }
 
     // ==========================================
@@ -251,10 +261,30 @@ public class MasterDataService {
         }
     }
 
+    public boolean isRoomLocked(int roomId) {
+        if (roomId <= 0) return false;
+        List<RegularSchedule> schedules = scheduleDao.getSchedulesByRoomId(roomId);
+        List<Booking> activeBookings = bookingDao.getActiveBookingsByRoom(roomId);
+        return !schedules.isEmpty() || !activeBookings.isEmpty();
+    }
+
     public ServiceResult<Void> deleteRoom(int id) {
         if (id <= 0) {
             return ServiceResult.failure("ID ruangan tidak valid!");
         }
+
+        // Proteksi integritas data: ruangan yang sudah memiliki jadwal tetap atau booking fiks/aktif tidak bisa dihapus
+        List<RegularSchedule> schedules = scheduleDao.getSchedulesByRoomId(id);
+        List<Booking> activeBookings = bookingDao.getActiveBookingsByRoom(id);
+        if (!schedules.isEmpty() || !activeBookings.isEmpty()) {
+            return ServiceResult.failure(
+                    "Ruangan TIDAK DAPAT DIHAPUS karena memiliki jadwal/booking aktif yang sudah fiks!\n" +
+                    "• Jadwal perkuliahan tetap: " + schedules.size() + "\n" +
+                    "• Booking aktif / disetujui (FIKS): " + activeBookings.size() + "\n\n" +
+                    "Hapus atau pindahkan jadwal terkait terlebih dahulu."
+            );
+        }
+
         boolean ok = roomDao.deleteRoom(id);
         if (ok) {
             return ServiceResult.success("Ruangan berhasil dihapus.");

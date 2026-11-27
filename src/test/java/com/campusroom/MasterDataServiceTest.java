@@ -76,4 +76,79 @@ public class MasterDataServiceTest {
         Assertions.assertNotNull(fp);
         Assertions.assertEquals("images/floorplan_gedung_a.png", fp);
     }
+
+    @Test
+    public void testDeleteRoomProtectionForFixedSchedules() {
+        // Room 1 (R. 201) memiliki jadwal reguler tetap -> harus ditolak penghapusannya
+        Assertions.assertTrue(masterDataService.isRoomLocked(1), "Room 1 memiliki jadwal tetap sehingga berstatus terkunci");
+        ServiceResult<Void> delLocked = masterDataService.deleteRoom(1);
+        Assertions.assertFalse(delLocked.isSuccess(), "Ruangan dengan jadwal/booking fiks tidak boleh dihapus");
+        Assertions.assertTrue(delLocked.getMessage().contains("FIKS") || delLocked.getMessage().contains("fiks"));
+
+        // Tambah ruangan sementara tanpa jadwal, pastikan bisa dihapus
+        Room tempRoom = new Room(1, "TMP-DEL-01", "Ruang Sementara Uji", 1, 20, "Kelas Teori", "AC", 50, 50, 120, 100);
+        ServiceResult<Room> addRes = masterDataService.addRoom(tempRoom);
+        Assertions.assertTrue(addRes.isSuccess());
+
+        Room fetched = masterDataService.getRoomsByBuilding(1).stream()
+                .filter(r -> "TMP-DEL-01".equals(r.getCode()))
+                .findFirst().orElse(null);
+        Assertions.assertNotNull(fetched);
+        Assertions.assertFalse(masterDataService.isRoomLocked(fetched.getId()));
+
+        ServiceResult<Void> delFree = masterDataService.deleteRoom(fetched.getId());
+        Assertions.assertTrue(delFree.isSuccess(), "Ruangan kosong tanpa jadwal harus berhasil dihapus");
+    }
+
+    @Test
+    public void testUpdateRoomPropertiesViaMasterDataService() {
+        Room tempRoom = new Room(1, "TMP-EDT-01", "Ruang Lama", 2, 30, "Kelas Teori", "AC", 100, 100, 180, 140);
+        ServiceResult<Room> addRes = masterDataService.addRoom(tempRoom);
+        Assertions.assertTrue(addRes.isSuccess());
+
+        Room fetched = masterDataService.getRoomsByBuilding(1).stream()
+                .filter(r -> "TMP-EDT-01".equals(r.getCode()))
+                .findFirst().orElse(null);
+        Assertions.assertNotNull(fetched);
+
+        // Edit atribut ruangan
+        fetched.setName("Ruang Baru Diperbarui");
+        fetched.setCapacity(45);
+        fetched.setRoomType("Smart Classroom");
+        fetched.setFacilities("Smart TV, AC, Wi-Fi 6");
+
+        ServiceResult<Room> updRes = masterDataService.updateRoom(fetched);
+        Assertions.assertTrue(updRes.isSuccess(), "Edit ruangan harus berhasil: " + updRes.getMessage());
+
+        Room reloaded = masterDataService.getRoomById(fetched.getId());
+        Assertions.assertEquals("Ruang Baru Diperbarui", reloaded.getName());
+        Assertions.assertEquals(45, reloaded.getCapacity());
+        Assertions.assertEquals("Smart Classroom", reloaded.getRoomType());
+        Assertions.assertEquals("Smart TV, AC, Wi-Fi 6", reloaded.getFacilities());
+
+        // Cleanup
+        Assertions.assertTrue(masterDataService.deleteRoom(fetched.getId()).isSuccess());
+    }
+
+    @Test
+    public void testDatabasePathResolutionForPackagedBundle() {
+        String prevAppPath = System.getProperty("jpackage.app-path");
+        try {
+            System.clearProperty("jpackage.app-path");
+            java.io.File devFile = com.campusroom.dao.DatabaseHelper.resolveDatabaseFile();
+            Assertions.assertEquals("campusroom.db", devFile.getName());
+
+            System.setProperty("jpackage.app-path", "/opt/CampusRoom/CampusRoom");
+            java.io.File packagedFile = com.campusroom.dao.DatabaseHelper.resolveDatabaseFile();
+            Assertions.assertEquals("campusroom.db", packagedFile.getName());
+            Assertions.assertTrue(packagedFile.getAbsolutePath().contains("CampusRoom")
+                    || packagedFile.getAbsolutePath().contains(".campusroom"));
+        } finally {
+            if (prevAppPath == null) {
+                System.clearProperty("jpackage.app-path");
+            } else {
+                System.setProperty("jpackage.app-path", prevAppPath);
+            }
+        }
+    }
 }

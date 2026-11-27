@@ -1,15 +1,25 @@
 package com.campusroom.ui;
 
 import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.geom.RoundRectangle2D;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableRowSorter;
 
 /**
  * ModernUIHelper - Utilitas styling terpadu untuk estetika modern, minimalis, dan elegan.
@@ -49,6 +59,34 @@ public class ModernUIHelper {
         return font(Font.PLAIN, size);
     }
 
+    public static JLabel createPillBadge(String text, Color dotColor, Color bg, Color fg) {
+        JLabel lbl = new JLabel(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                g2.setColor(getBackground());
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+
+                if (dotColor != null) {
+                    g2.setColor(dotColor);
+                    int dotSize = 6;
+                    int dotY = (getHeight() - dotSize) / 2;
+                    g2.fillOval(8, dotY, dotSize, dotSize);
+                }
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        lbl.setFont(fontBold(10));
+        lbl.setOpaque(false);
+        lbl.setBackground(bg);
+        lbl.setForeground(fg);
+        lbl.setBorder(new javax.swing.border.EmptyBorder(4, dotColor != null ? 18 : 10, 4, 10));
+        return lbl;
+    }
+
     public static void styleComboBox(JComboBox<?> cb) {
         cb.setFont(fontPlain(11));
         cb.setBackground(Color.WHITE);
@@ -61,6 +99,195 @@ public class ModernUIHelper {
         tf.setBackground(Color.WHITE);
         tf.setForeground(TEXT_DARK);
         tf.putClientProperty("JComponent.roundRect", true);
+    }
+
+    /**
+     * Memasang filter pencarian instan berbasis regex (case-insensitive & aman dari karakter khusus)
+     * menggunakan TableRowSorter ke JTable.
+     */
+    public static TableRowSorter<DefaultTableModel> attachInstantTableSearch(JTextField searchField, JTable table, int... columnIndices) {
+        DefaultTableModel model = (DefaultTableModel) table.getModel();
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+
+        if (searchField != null) {
+            searchField.getDocument().addDocumentListener(new DocumentListener() {
+                private void updateFilter() {
+                    String text = searchField.getText().trim();
+                    if (text.isEmpty()) {
+                        sorter.setRowFilter(null);
+                    } else {
+                        sorter.setRowFilter(RowFilter.regexFilter("(?i)" + Pattern.quote(text), columnIndices));
+                    }
+                }
+                @Override public void insertUpdate(DocumentEvent e) { updateFilter(); }
+                @Override public void removeUpdate(DocumentEvent e) { updateFilter(); }
+                @Override public void changedUpdate(DocumentEvent e) { updateFilter(); }
+            });
+        }
+        return sorter;
+    }
+
+    /**
+     * Membuat panel bar pencarian standar di atas tabel data.
+     */
+    public static JPanel createTableSearchBar(String labelText, String placeholder, JTextField searchField) {
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
+        bar.setBackground(new Color(248, 250, 252));
+        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_LIGHT));
+
+        JLabel lbl = new JLabel(labelText);
+        lbl.setFont(fontBold(11));
+        lbl.setForeground(new Color(71, 85, 105));
+        bar.add(lbl);
+
+        searchField.setPreferredSize(new Dimension(260, 28));
+        searchField.putClientProperty("JTextField.placeholderText", placeholder);
+        styleTextField(searchField);
+        bar.add(searchField);
+
+        JButton btnClear = createCompactButton("Reset", Color.WHITE, TEXT_SECONDARY, 10, false);
+        btnClear.setPreferredSize(new Dimension(54, 26));
+        btnClear.addActionListener(e -> searchField.setText(""));
+        bar.add(btnClear);
+
+        return bar;
+    }
+
+    /**
+     * Mengambil ID integer (kolom 0) dari baris tabel yang sedang terpilih (aman terhadap RowSorter).
+     */
+    public static Integer getSelectedRowId(JTable table, DefaultTableModel model) {
+        if (table == null || model == null) return null;
+        int viewRow = table.getSelectedRow();
+        if (viewRow == -1) return null;
+        int modelRow = table.convertRowIndexToModel(viewRow);
+        if (modelRow >= 0 && modelRow < model.getRowCount()) {
+            Object val = model.getValueAt(modelRow, 0);
+            if (val instanceof Integer) {
+                return (Integer) val;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Memulihkan seleksi baris tabel berdasarkan ID integer (kolom 0) setelah data dimuat ulang.
+     */
+    public static void restoreSelectedRowById(JTable table, DefaultTableModel model, Integer targetId) {
+        if (table == null || model == null || targetId == null) return;
+        for (int mRow = 0; mRow < model.getRowCount(); mRow++) {
+            Object val = model.getValueAt(mRow, 0);
+            if (targetId.equals(val)) {
+                int viewRow = table.convertRowIndexToView(mRow);
+                if (viewRow != -1) {
+                    table.setRowSelectionInterval(viewRow, viewRow);
+                }
+                break;
+            }
+        }
+    }
+
+    // ==========================================
+    // KONTAK RESMI ADMIN SARPRAS (WHATSAPP)
+    // ==========================================
+    public static final String ADMIN_NAME = "Bpk. Rahmat Santoso";
+    public static final String ADMIN_PHONE = "081399887766";
+    public static final String ADMIN_PHONE_INTL = "6281399887766";
+    public static final String ADMIN_EMAIL = "admin.campusroom@univ.ac.id";
+    public static final String ADMIN_OFFICE_HOURS = "Senin – Jumat, 08:00 – 16:00 WIB";
+
+    /**
+     * Membangun dialog kontak admin resmi dan opsi buka WhatsApp.
+     */
+    public static JDialog createContactAdminDialog(Component parent) {
+        Window owner = (parent != null) ? SwingUtilities.getWindowAncestor(parent) : null;
+        JDialog dialog = new JDialog(owner, "Pusat Bantuan & Kontak Admin Sarpras", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setLayout(new BorderLayout());
+        dialog.setResizable(false);
+
+        JPanel header = new JPanel(new BorderLayout(0, 4));
+        header.setBackground(new Color(15, 23, 42));
+        header.setBorder(new EmptyBorder(14, 18, 14, 18));
+
+        JLabel lblTitle = new JLabel("Layanan Pengaduan & Bantuan Cepat Admin");
+        lblTitle.setFont(fontBold(14));
+        lblTitle.setForeground(Color.WHITE);
+
+        JLabel lblSubtitle = new JLabel("Hubungi langsung Admin Sarpras untuk izin darurat atau kendala ruangan.");
+        lblSubtitle.setFont(fontPlain(11));
+        lblSubtitle.setForeground(new Color(148, 163, 184));
+
+        header.add(lblTitle, BorderLayout.NORTH);
+        header.add(lblSubtitle, BorderLayout.SOUTH);
+        dialog.add(header, BorderLayout.NORTH);
+
+        JPanel body = new JPanel(new GridLayout(4, 1, 6, 8));
+        body.setBackground(Color.WHITE);
+        body.setBorder(new EmptyBorder(16, 20, 16, 20));
+
+        body.add(new JLabel("<html><b>Nama Petugas:</b> " + ADMIN_NAME + " (Admin Sarpras)</html>"));
+        body.add(new JLabel("<html><b>Nomor WhatsApp:</b> <span style='color:#059669; font-weight:bold;'>" + ADMIN_PHONE + " (+62 813-9988-7766)</span></html>"));
+        body.add(new JLabel("<html><b>Jam Layanan:</b> " + ADMIN_OFFICE_HOURS + "</html>"));
+        body.add(new JLabel("<html><b>Email Resmi:</b> " + ADMIN_EMAIL + "</html>"));
+        dialog.add(body, BorderLayout.CENTER);
+
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        footer.setBackground(new Color(248, 250, 252));
+        footer.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER_LIGHT));
+
+        JButton btnClose = createStyledButton("Tutup", new Color(241, 245, 249), TEXT_DARK, 11, false);
+        btnClose.addActionListener(e -> dialog.dispose());
+
+        JButton btnCopy = createStyledButton("Salin Nomor WA", new Color(224, 242, 254), COLOR_SKY, 11, true);
+        btnCopy.addActionListener(e -> {
+            copyToClipboard(ADMIN_PHONE);
+            JOptionPane.showMessageDialog(dialog, "Nomor WhatsApp " + ADMIN_PHONE + " berhasil disalin ke clipboard!", "Tersalin", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        JButton btnOpenWa = createStyledButton("Buka Chat WhatsApp", COLOR_SUCCESS, Color.WHITE, 11, true);
+        btnOpenWa.addActionListener(e -> {
+            openWhatsAppDirect(ADMIN_PHONE_INTL, "Halo Admin Sarpras CampusRoom, saya ingin konfirmasi perihal peminjaman ruangan.");
+            dialog.dispose();
+        });
+
+        footer.add(btnClose);
+        footer.add(btnCopy);
+        footer.add(btnOpenWa);
+        dialog.add(footer, BorderLayout.SOUTH);
+
+        dialog.pack();
+        dialog.setLocationRelativeTo(parent);
+        return dialog;
+    }
+
+    public static void showContactAdminDialog(Component parent) {
+        JDialog dialog = createContactAdminDialog(parent);
+        dialog.setVisible(true);
+    }
+
+    public static void copyToClipboard(String text) {
+        StringSelection stringSelection = new StringSelection(text);
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(stringSelection, null);
+    }
+
+    public static String buildWhatsAppUrl(String phoneIntl, String message) {
+        String encodedMsg = URLEncoder.encode(message != null ? message : "", StandardCharsets.UTF_8);
+        return "https://wa.me/" + phoneIntl + "?text=" + encodedMsg;
+    }
+
+    public static void openWhatsAppDirect(String phoneIntl, String message) {
+        try {
+            String url = buildWhatsAppUrl(phoneIntl, message);
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI(url));
+            } else {
+                Runtime.getRuntime().exec(new String[]{"xdg-open", url});
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(null, "Gagal membuka browser secara otomatis.\nSilakan hubungi WhatsApp ke: " + ADMIN_PHONE, "Info", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     /**

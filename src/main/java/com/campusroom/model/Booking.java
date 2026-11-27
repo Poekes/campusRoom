@@ -191,6 +191,10 @@ public class Booking extends BaseEntity {
         this.roomName = roomName;
     }
 
+    public boolean isFixed() {
+        return "DISETUJUI".equalsIgnoreCase(status);
+    }
+
     public String getStatusBadgeText() {
         switch (status) {
             case "MENUNGGU_SEKDEK":
@@ -198,7 +202,7 @@ public class Booking extends BaseEntity {
             case "DIVALIDASI_SEKDEK":
                 return "Divalidasi Sekdek (Menunggu Admin)";
             case "DISETUJUI":
-                return "Disetujui (Aktif)";
+                return "Disetujui (FIKS / Resmi)";
             case "DITOLAK":
                 return "Ditolak";
             default:

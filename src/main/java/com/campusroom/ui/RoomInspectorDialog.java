@@ -41,7 +41,7 @@ public class RoomInspectorDialog extends JDialog {
 
     public RoomInspectorDialog(Window parent, Room room, Building building, int floor,
                                Runnable onSaveCallback, Runnable onDeleteCallback, Runnable onDuplicateCallback) {
-        super(parent, "Properti Ruangan — " + (room != null ? room.getCode() : "Ruangan"), ModalityType.APPLICATION_MODAL);
+        super(parent, "Pengaturan Data & Dimensi Ruangan — " + (room != null ? room.getCode() : "Ruangan"), ModalityType.APPLICATION_MODAL);
         this.room = room;
         this.building = building;
         this.floor = floor;
@@ -191,8 +191,9 @@ public class RoomInspectorDialog extends JDialog {
         form.add(lblType, gbc);
 
         gbc.gridx = 1; gbc.weightx = 0.65;
-        String[] types = {"Kelas Teori", "Smart Classroom", "Laboratorium", "Studio", "Auditorium", "Ruang Seminar", "Administrasi"};
+        String[] types = {"Kelas Teori", "Smart Classroom", "Laboratorium", "Studio", "Auditorium", "Ruang Seminar", "Administrasi", "Ruang Rapat", "Ruang Kolaborasi", "Ruang Konsultasi", "Ruang Ujian", "Workshop"};
         cbType = new JComboBox<>(types);
+        cbType.setEditable(true);
         cbType.setSelectedItem(room.getRoomType());
         cbType.setFont(new Font("SansSerif", Font.PLAIN, 11));
         form.add(cbType, gbc);
@@ -237,9 +238,11 @@ public class RoomInspectorDialog extends JDialog {
     }
 
     private JPanel createCanvasGeometryCard() {
-        JPanel card = createCardContainer("📐 KOORDINAT & DIMENSI CANVAS");
+        JPanel card = createCardContainer("📐 UKURAN & POSISI PADA DENAH");
         JPanel content = new JPanel(new BorderLayout(0, 10));
         content.setOpaque(false);
+
+        JLabel lblGeoHint = new JLabel("<html><span style='color:#64748b; font-size:10px;'>Sesuaikan posisi dan dimensi kotak pada denah, atau gunakan ukuran standar:</span></html>");
 
         // Grid of 4 spinners
         JPanel spinGrid = new JPanel(new GridLayout(2, 4, 8, 8));
@@ -255,51 +258,56 @@ public class RoomInspectorDialog extends JDialog {
         spWidth.addChangeListener(e -> updatePreview());
         spHeight.addChangeListener(e -> updatePreview());
 
-        JLabel lX = new JLabel("Posisi X:", JLabel.RIGHT); lX.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        JLabel lY = new JLabel("Posisi Y:", JLabel.RIGHT); lY.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        JLabel lW = new JLabel("Lebar (W):", JLabel.RIGHT); lW.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        JLabel lH = new JLabel("Tinggi (H):", JLabel.RIGHT); lH.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        JLabel lX = new JLabel("Dari Kiri (X):", JLabel.RIGHT); lX.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        JLabel lY = new JLabel("Dari Atas (Y):", JLabel.RIGHT); lY.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        JLabel lW = new JLabel("Lebar (px):", JLabel.RIGHT); lW.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        JLabel lH = new JLabel("Panjang (px):", JLabel.RIGHT); lH.setFont(new Font("SansSerif", Font.PLAIN, 11));
 
         spinGrid.add(lX); spinGrid.add(spX);
         spinGrid.add(lY); spinGrid.add(spY);
         spinGrid.add(lW); spinGrid.add(spWidth);
         spinGrid.add(lH); spinGrid.add(spHeight);
 
-        content.add(spinGrid, BorderLayout.NORTH);
+        JPanel topGeo = new JPanel(new BorderLayout(0, 6));
+        topGeo.setOpaque(false);
+        topGeo.add(lblGeoHint, BorderLayout.NORTH);
+        topGeo.add(spinGrid, BorderLayout.CENTER);
+        content.add(topGeo, BorderLayout.NORTH);
 
         // Quick Preset Buttons
         JPanel presetBar = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
         presetBar.setOpaque(false);
 
-        JButton btnStd = new JButton("↔ 180×150 px");
+        JButton btnStd = new JButton("Kelas Standar (180×140)");
         btnStd.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnStd.setToolTipText("Standarkan ukuran ke 180 × 150 px");
+        btnStd.setToolTipText("Standarkan ukuran ke 180 × 140 px");
         btnStd.addActionListener(e -> {
             spWidth.setValue(180);
-            spHeight.setValue(150);
+            spHeight.setValue(140);
             updatePreview();
         });
 
-        JButton btnAlignLeft = new JButton("⇤ X = 60");
-        btnAlignLeft.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnAlignLeft.setToolTipText("Ratakan sisi kiri ke margin 60 px");
-        btnAlignLeft.addActionListener(e -> {
-            spX.setValue(60);
+        JButton btnLab = new JButton("Lab Besar (260×160)");
+        btnLab.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        btnLab.setToolTipText("Standarkan ukuran ke 260 × 160 px");
+        btnLab.addActionListener(e -> {
+            spWidth.setValue(260);
+            spHeight.setValue(160);
             updatePreview();
         });
 
-        JButton btnNudge = new JButton("+30 px");
-        btnNudge.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnNudge.setToolTipText("Geser posisi diagonal +30 px");
-        btnNudge.addActionListener(e -> {
-            spX.setValue((Integer) spX.getValue() + 30);
-            spY.setValue((Integer) spY.getValue() + 30);
+        JButton btnSeminar = new JButton("Seminar (200×180)");
+        btnSeminar.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        btnSeminar.setToolTipText("Standarkan ukuran ke 200 × 180 px");
+        btnSeminar.addActionListener(e -> {
+            spWidth.setValue(200);
+            spHeight.setValue(180);
             updatePreview();
         });
 
         presetBar.add(btnStd);
-        presetBar.add(btnAlignLeft);
-        presetBar.add(btnNudge);
+        presetBar.add(btnLab);
+        presetBar.add(btnSeminar);
 
         content.add(presetBar, BorderLayout.CENTER);
 

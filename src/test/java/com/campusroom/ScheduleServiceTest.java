@@ -81,4 +81,47 @@ public class ScheduleServiceTest {
         ServiceResult<Void> delResult = scheduleService.deleteSchedule(addedTarget.getId());
         Assertions.assertTrue(delResult.isSuccess());
     }
+
+    @Test
+    public void testLecturerScheduleAndSummary() {
+        // 1. Ambil daftar dosen unik
+        List<String> lecturers = scheduleService.getAllLecturers();
+        Assertions.assertNotNull(lecturers);
+        Assertions.assertFalse(lecturers.isEmpty(), "Daftar dosen tidak boleh kosong");
+        Assertions.assertTrue(lecturers.contains("Dr. Ir. Hendra Saputra, M.T."));
+
+        // 2. Ambil jadwal spesifik dosen
+        List<RegularSchedule> hendraSchedules = scheduleService.getSchedulesByLecturer("Dr. Ir. Hendra Saputra, M.T.");
+        Assertions.assertFalse(hendraSchedules.isEmpty(), "Jadwal Dr. Hendra harus ditemukan");
+        for (RegularSchedule s : hendraSchedules) {
+            Assertions.assertEquals("Dr. Ir. Hendra Saputra, M.T.", s.getLecturerName());
+        }
+
+        // 3. Uji kalkulasi ringkasan dosen (LecturerSummary)
+        ScheduleService.LecturerSummary summary = scheduleService.getLecturerSummary("Dr. Ir. Hendra Saputra, M.T.");
+        Assertions.assertNotNull(summary);
+        Assertions.assertEquals("Dr. Ir. Hendra Saputra, M.T.", summary.getLecturerName());
+        Assertions.assertTrue(summary.getTotalSessions() >= 1);
+        Assertions.assertTrue(summary.getTotalMinutes() > 0);
+        Assertions.assertNotNull(summary.getFormattedDuration());
+        Assertions.assertTrue(summary.getActiveDays().contains("Senin"));
+        Assertions.assertFalse(summary.hasConflict());
+
+        // 4. Uji input null / kosong
+        List<RegularSchedule> empty = scheduleService.getSchedulesByLecturer(null);
+        Assertions.assertNotNull(empty);
+        Assertions.assertTrue(empty.isEmpty());
+    }
+
+    @Test
+    public void testGetSchedulesByRoomId() {
+        List<RegularSchedule> room1Schedules = scheduleService.getSchedulesByRoomId(1);
+        Assertions.assertNotNull(room1Schedules);
+        Assertions.assertTrue(room1Schedules.size() >= 2, "Room 1 (R. 201) harus memiliki jadwal Senin & Selasa");
+        for (RegularSchedule s : room1Schedules) {
+            Assertions.assertEquals(1, s.getRoomId());
+        }
+
+        Assertions.assertTrue(scheduleService.getSchedulesByRoomId(0).isEmpty());
+    }
 }

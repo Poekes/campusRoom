@@ -25,6 +25,7 @@ public class SecretaryPanel extends JPanel {
 
     private JPanel pnlValidation;
     private JPanel pnlSchedule;
+    private JPanel pnlLecturerSchedule;
 
     private JTable tblPending;
     private DefaultTableModel modelPending;
@@ -33,6 +34,19 @@ public class SecretaryPanel extends JPanel {
     private JTable tblSchedules;
     private DefaultTableModel modelSchedules;
     private JLabel lblScheduleCount;
+
+    // Komponen Jadwal per Dosen
+    private JTabbedPane scheduleTabs;
+    private JTable tblLecturerSchedules;
+    private DefaultTableModel modelLecturerSchedules;
+    private JComboBox<String> cbLecturers;
+    private JComboBox<String> cbDayFilter;
+    private JLabel lblLecturerName;
+    private JLabel lblLecturerSessions;
+    private JLabel lblLecturerHours;
+    private JLabel lblLecturerDays;
+    private JLabel lblLecturerConflict;
+    private JLabel lblLecturerScheduleCount;
 
     private JTabbedPane tabbedPane;
 
@@ -108,6 +122,9 @@ public class SecretaryPanel extends JPanel {
 
         JScrollPane scrollPane = new JScrollPane(tblPending);
         scrollPane.setBorder(null);
+        JTextField txtSearchPending = new JTextField(22);
+        ModernUIHelper.attachInstantTableSearch(txtSearchPending, tblPending, 1, 2, 3, 5, 6, 7, 8, 9, 10);
+        tableCard.add(ModernUIHelper.createTableSearchBar("Cari Pengajuan:", "Kode booking, ruangan, matkul, dosen, NIM, nama PJ...", txtSearchPending), BorderLayout.NORTH);
         tableCard.add(scrollPane, BorderLayout.CENTER);
         panel.add(tableCard, BorderLayout.CENTER);
 
@@ -133,6 +150,23 @@ public class SecretaryPanel extends JPanel {
     }
 
     private JPanel createScheduleContent() {
+        JPanel container = new JPanel(new BorderLayout());
+        container.setBackground(ModernUIHelper.BG_PAGE);
+
+        scheduleTabs = new JTabbedPane();
+        scheduleTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
+
+        JPanel pnlAllSchedules = createAllSchedulesSubContent();
+        pnlLecturerSchedule = createLecturerScheduleContent();
+
+        scheduleTabs.addTab("Seluruh Jadwal Perkuliahan", pnlAllSchedules);
+        scheduleTabs.addTab("Detail Jadwal per Dosen", pnlLecturerSchedule);
+
+        container.add(scheduleTabs, BorderLayout.CENTER);
+        return container;
+    }
+
+    private JPanel createAllSchedulesSubContent() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
         panel.setBackground(ModernUIHelper.BG_PAGE);
@@ -150,7 +184,7 @@ public class SecretaryPanel extends JPanel {
 
         JPanel header = ModernUIHelper.createPageHeader(
                 "Jadwal Perkuliahan Tetap",
-                "Daftar jadwal perkuliahan rutin semester.",
+                "Daftar seluruh jadwal perkuliahan rutin semester berdasarkan ruangan.",
                 rightHeader
         );
         panel.add(header, BorderLayout.NORTH);
@@ -171,6 +205,9 @@ public class SecretaryPanel extends JPanel {
 
         JScrollPane scrollPane = new JScrollPane(tblSchedules);
         scrollPane.setBorder(null);
+        JTextField txtSearchSchedule = new JTextField(22);
+        ModernUIHelper.attachInstantTableSearch(txtSearchSchedule, tblSchedules, 1, 4, 5, 6, 7, 8);
+        tableCard.add(ModernUIHelper.createTableSearchBar("Cari Jadwal:", "Hari, ruangan, kode/nama matkul, dosen, kelas...", txtSearchSchedule), BorderLayout.NORTH);
         tableCard.add(scrollPane, BorderLayout.CENTER);
         panel.add(tableCard, BorderLayout.CENTER);
 
@@ -191,7 +228,230 @@ public class SecretaryPanel extends JPanel {
         return panel;
     }
 
+    private JPanel createLecturerScheduleContent() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+        panel.setBackground(ModernUIHelper.BG_PAGE);
+
+        // Modern Page Header
+        JPanel rightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightHeader.setOpaque(false);
+        lblLecturerScheduleCount = new JLabel("0 Sesi Mengajar");
+        lblLecturerScheduleCount.setFont(new Font("SansSerif", Font.BOLD, 11));
+        lblLecturerScheduleCount.setOpaque(true);
+        lblLecturerScheduleCount.setBackground(new Color(224, 231, 255)); // Indigo 100
+        lblLecturerScheduleCount.setForeground(new Color(67, 56, 202));   // Indigo 700
+        lblLecturerScheduleCount.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+        rightHeader.add(lblLecturerScheduleCount);
+
+        JPanel header = ModernUIHelper.createPageHeader(
+                "Detail Jadwal per Dosen",
+                "Periksa rincian jadwal mengajar mingguan dan total jam mengajar per dosen.",
+                rightHeader
+        );
+
+        // Filter Bar Card
+        JPanel filterCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        filterCard.setBackground(Color.WHITE);
+        filterCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(ModernUIHelper.BORDER_LIGHT),
+                BorderFactory.createEmptyBorder(6, 12, 6, 12)
+        ));
+
+        JLabel lblLec = new JLabel("Dosen Pengampu:");
+        lblLec.setFont(ModernUIHelper.fontBold(11));
+        lblLec.setForeground(ModernUIHelper.TEXT_DARK);
+        filterCard.add(lblLec);
+
+        cbLecturers = new JComboBox<>();
+        cbLecturers.setPreferredSize(new Dimension(240, 28));
+        ModernUIHelper.styleComboBox(cbLecturers);
+        cbLecturers.addActionListener(e -> updateLecturerScheduleView());
+        filterCard.add(cbLecturers);
+
+        JLabel lblDay = new JLabel("Hari:");
+        lblDay.setFont(ModernUIHelper.fontBold(11));
+        lblDay.setForeground(ModernUIHelper.TEXT_DARK);
+        filterCard.add(lblDay);
+
+        String[] days = {"Semua Hari", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"};
+        cbDayFilter = new JComboBox<>(days);
+        cbDayFilter.setPreferredSize(new Dimension(110, 28));
+        ModernUIHelper.styleComboBox(cbDayFilter);
+        cbDayFilter.addActionListener(e -> updateLecturerScheduleView());
+        filterCard.add(cbDayFilter);
+
+        JButton btnRefreshLec = ModernUIHelper.createStyledButton("Muat Ulang", new Color(241, 245, 249), ModernUIHelper.TEXT_DARK, 11, false);
+        btnRefreshLec.addActionListener(e -> refreshLecturers());
+        filterCard.add(btnRefreshLec);
+
+        JPanel topGroup = new JPanel(new BorderLayout(0, 8));
+        topGroup.setOpaque(false);
+        topGroup.add(header, BorderLayout.NORTH);
+        topGroup.add(filterCard, BorderLayout.SOUTH);
+        panel.add(topGroup, BorderLayout.NORTH);
+
+        // Center Container: Profile Summary Card + Schedule Table Card
+        JPanel centerContainer = new JPanel(new BorderLayout(0, 10));
+        centerContainer.setOpaque(false);
+
+        // Summary Card
+        JPanel summaryCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
+        summaryCard.setBackground(new Color(248, 250, 252));
+        summaryCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240)),
+                BorderFactory.createEmptyBorder(6, 10, 6, 10)
+        ));
+
+        lblLecturerName = new JLabel("Pilih Dosen Pengampu");
+        lblLecturerName.setFont(ModernUIHelper.fontBold(13));
+        lblLecturerName.setForeground(ModernUIHelper.TEXT_DARK);
+
+        lblLecturerSessions = ModernUIHelper.createPillBadge("0 Sesi", null, new Color(241, 245, 249), ModernUIHelper.COLOR_PRIMARY);
+        lblLecturerHours = ModernUIHelper.createPillBadge("0 Jam", null, new Color(241, 245, 249), ModernUIHelper.TEXT_DARK);
+        lblLecturerDays = ModernUIHelper.createPillBadge("Hari: -", null, new Color(241, 245, 249), ModernUIHelper.TEXT_SECONDARY);
+        lblLecturerConflict = ModernUIHelper.createPillBadge("🟢 Jadwal Teratur", new Color(16, 185, 129), new Color(220, 252, 231), new Color(22, 101, 52));
+
+        summaryCard.add(lblLecturerName);
+        summaryCard.add(lblLecturerSessions);
+        summaryCard.add(lblLecturerHours);
+        summaryCard.add(lblLecturerDays);
+        summaryCard.add(lblLecturerConflict);
+        centerContainer.add(summaryCard, BorderLayout.NORTH);
+
+        // Table Card
+        JPanel tableCard = new JPanel(new BorderLayout());
+        tableCard.setBackground(Color.WHITE);
+        tableCard.setBorder(BorderFactory.createLineBorder(ModernUIHelper.BORDER_LIGHT));
+
+        String[] cols = {"ID", "Hari", "Jam Mulai", "Jam Selesai", "Durasi", "Ruangan", "Kode MK", "Nama Mata Kuliah", "Kelas"};
+        modelLecturerSchedules = new DefaultTableModel(cols, 0) {
+            @Override
+            public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblLecturerSchedules = new JTable(modelLecturerSchedules);
+        ModernUIHelper.styleModernTable(tblLecturerSchedules);
+        tblLecturerSchedules.getColumnModel().getColumn(0).setPreferredWidth(45);
+        tblLecturerSchedules.getColumnModel().getColumn(1).setPreferredWidth(75);
+        tblLecturerSchedules.getColumnModel().getColumn(2).setPreferredWidth(75);
+        tblLecturerSchedules.getColumnModel().getColumn(3).setPreferredWidth(75);
+        tblLecturerSchedules.getColumnModel().getColumn(4).setPreferredWidth(70);
+        tblLecturerSchedules.getColumnModel().getColumn(5).setPreferredWidth(85);
+        tblLecturerSchedules.getColumnModel().getColumn(6).setPreferredWidth(80);
+        tblLecturerSchedules.getColumnModel().getColumn(7).setPreferredWidth(220);
+
+        JScrollPane scroll = new JScrollPane(tblLecturerSchedules);
+        scroll.setBorder(null);
+        tableCard.add(scroll, BorderLayout.CENTER);
+        centerContainer.add(tableCard, BorderLayout.CENTER);
+
+        panel.add(centerContainer, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void updateLecturerScheduleView() {
+        if (modelLecturerSchedules == null || cbLecturers == null) return;
+        modelLecturerSchedules.setRowCount(0);
+
+        String selectedLecturer = (String) cbLecturers.getSelectedItem();
+        if (selectedLecturer == null || selectedLecturer.trim().isEmpty()) {
+            if (lblLecturerName != null) lblLecturerName.setText("Pilih Dosen Pengampu");
+            if (lblLecturerSessions != null) lblLecturerSessions.setText("0 Sesi");
+            if (lblLecturerHours != null) lblLecturerHours.setText("0 Jam");
+            if (lblLecturerDays != null) lblLecturerDays.setText("Hari: -");
+            if (lblLecturerScheduleCount != null) lblLecturerScheduleCount.setText("0 Sesi Mengajar");
+            return;
+        }
+
+        ScheduleService.LecturerSummary summary = scheduleService.getLecturerSummary(selectedLecturer);
+        if (lblLecturerName != null) lblLecturerName.setText("👨‍🏫 " + selectedLecturer);
+        if (lblLecturerSessions != null) lblLecturerSessions.setText("Total: " + summary.getTotalSessions() + " Sesi");
+        if (lblLecturerHours != null) lblLecturerHours.setText("Beban: " + summary.getFormattedDuration());
+        if (lblLecturerDays != null) {
+            String daysStr = summary.getActiveDays().isEmpty() ? "-" : String.join(", ", summary.getActiveDays());
+            lblLecturerDays.setText("Hari: " + daysStr);
+        }
+        if (lblLecturerConflict != null) {
+            if (summary.hasConflict()) {
+                lblLecturerConflict.setText("⚠️ Terdeteksi Bentrok Jadwal!");
+                lblLecturerConflict.setBackground(new Color(254, 226, 226));
+                lblLecturerConflict.setForeground(new Color(185, 28, 28));
+            } else {
+                lblLecturerConflict.setText("🟢 Jadwal Teratur (Tanpa Bentrok)");
+                lblLecturerConflict.setBackground(new Color(220, 252, 231));
+                lblLecturerConflict.setForeground(new Color(22, 101, 52));
+            }
+        }
+
+        String selectedDay = (String) cbDayFilter.getSelectedItem();
+        boolean filterDay = (selectedDay != null && !selectedDay.equalsIgnoreCase("Semua Hari"));
+
+        List<RegularSchedule> list = scheduleService.getSchedulesByLecturer(selectedLecturer);
+        int countShown = 0;
+        for (RegularSchedule s : list) {
+            if (filterDay && !s.getDayOfWeek().equalsIgnoreCase(selectedDay)) {
+                continue;
+            }
+            countShown++;
+
+            String durStr = "-";
+            try {
+                java.time.LocalTime t1 = java.time.LocalTime.parse(s.getStartTime());
+                java.time.LocalTime t2 = java.time.LocalTime.parse(s.getEndTime());
+                long mins = java.time.Duration.between(t1, t2).toMinutes();
+                durStr = mins + " mnt";
+            } catch (Exception ignored) {}
+
+            modelLecturerSchedules.addRow(new Object[]{
+                    s.getId(),
+                    s.getDayOfWeek(),
+                    s.getStartTime(),
+                    s.getEndTime(),
+                    durStr,
+                    (s.getRoomCode() != null ? s.getRoomCode() : "R." + s.getRoomId()),
+                    s.getCourseCode(),
+                    s.getCourseName(),
+                    s.getClassName()
+            });
+        }
+
+        if (lblLecturerScheduleCount != null) {
+            lblLecturerScheduleCount.setText(countShown + " Sesi Ditampilkan");
+        }
+    }
+
+    private void refreshLecturers() {
+        if (cbLecturers == null) return;
+        String prev = (String) cbLecturers.getSelectedItem();
+        cbLecturers.removeAllItems();
+
+        List<String> lecturers = scheduleService.getAllLecturers();
+        for (String lec : lecturers) {
+            cbLecturers.addItem(lec);
+        }
+
+        if (prev != null && lecturers.contains(prev)) {
+            cbLecturers.setSelectedItem(prev);
+        } else if (!lecturers.isEmpty()) {
+            cbLecturers.setSelectedIndex(0);
+        }
+        updateLecturerScheduleView();
+    }
+
+    public JPanel getLecturerSchedulePanel() {
+        return pnlLecturerSchedule;
+    }
+
+    public void selectLecturerTab() {
+        if (scheduleTabs != null && scheduleTabs.getTabCount() > 1) {
+            scheduleTabs.setSelectedIndex(1);
+        }
+    }
+
     public void refreshData() {
+        Integer prevPendingId = ModernUIHelper.getSelectedRowId(tblPending, modelPending);
+        Integer prevScheduleId = ModernUIHelper.getSelectedRowId(tblSchedules, modelSchedules);
+
         // 1. Refresh Pending Bookings via BookingService
         modelPending.setRowCount(0);
         List<Booking> bookings = bookingService.getBookingsByStatus("MENUNGGU_SEKDEK");
@@ -213,6 +473,7 @@ public class SecretaryPanel extends JPanel {
         if (lblPendingCount != null) {
             lblPendingCount.setText(bookings.size() + " Pengajuan Menunggu");
         }
+        ModernUIHelper.restoreSelectedRowById(tblPending, modelPending, prevPendingId);
 
         // 2. Refresh Schedules via ScheduleService
         modelSchedules.setRowCount(0);
@@ -233,14 +494,19 @@ public class SecretaryPanel extends JPanel {
         if (lblScheduleCount != null) {
             lblScheduleCount.setText(schedules.size() + " Jadwal Tetap Terdaftar");
         }
+        ModernUIHelper.restoreSelectedRowById(tblSchedules, modelSchedules, prevScheduleId);
+
+        // 3. Refresh Jadwal per Dosen
+        refreshLecturers();
     }
 
     private void handleValidateBooking(boolean approve) {
-        int selectedRow = tblPending.getSelectedRow();
-        if (selectedRow == -1) {
+        int viewRow = tblPending.getSelectedRow();
+        if (viewRow == -1) {
             JOptionPane.showMessageDialog(this, "Pilih pengajuan terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
+        int selectedRow = tblPending.convertRowIndexToModel(viewRow);
 
         int bookingId = (int) modelPending.getValueAt(selectedRow, 0);
         String bookingCode = (String) modelPending.getValueAt(selectedRow, 1);
@@ -336,11 +602,12 @@ public class SecretaryPanel extends JPanel {
     }
 
     private void handleDeleteSchedule() {
-        int selectedRow = tblSchedules.getSelectedRow();
-        if (selectedRow == -1) {
+        int viewRow = tblSchedules.getSelectedRow();
+        if (viewRow == -1) {
             JOptionPane.showMessageDialog(this, "Pilih jadwal yang ingin dihapus.", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
+        int selectedRow = tblSchedules.convertRowIndexToModel(viewRow);
 
         int scheduleId = (int) modelSchedules.getValueAt(selectedRow, 0);
         String course = (String) modelSchedules.getValueAt(selectedRow, 6);

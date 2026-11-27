@@ -15,7 +15,6 @@ import java.sql.Statement;
  */
 public class DatabaseHelper {
     private static final String DB_FILE_NAME = "campusroom.db";
-    private static final String DB_URL = "jdbc:sqlite:" + DB_FILE_NAME;
 
     static {
         try {
@@ -25,12 +24,43 @@ public class DatabaseHelper {
         }
     }
 
+    /**
+     * Menentukan lokasi berkas database SQLite.
+     * Saat aplikasi dijalankan sebagai bundle installer/app-image jpackage,
+     * database disimpan di direktori data pengguna yang selalu dapat ditulisi.
+     */
+    public static File resolveDatabaseFile() {
+        String customPath = System.getProperty("campusroom.db.path");
+        if (customPath != null && !customPath.trim().isEmpty()) {
+            File customFile = new File(customPath.trim());
+            File parent = customFile.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+            return customFile;
+        }
+
+        String appPath = System.getProperty("jpackage.app-path");
+        if (appPath != null && !appPath.trim().isEmpty()) {
+            String localAppData = System.getenv("LOCALAPPDATA");
+            File baseDir = (localAppData != null && !localAppData.trim().isEmpty())
+                    ? new File(localAppData, "CampusRoom")
+                    : new File(System.getProperty("user.home"), ".campusroom");
+            if (!baseDir.exists()) {
+                baseDir.mkdirs();
+            }
+            return new File(baseDir, DB_FILE_NAME);
+        }
+
+        return new File(DB_FILE_NAME);
+    }
+
     public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(DB_URL);
+        return DriverManager.getConnection("jdbc:sqlite:" + resolveDatabaseFile().getPath());
     }
 
     public static void initializeDatabase() {
-        File dbFile = new File(DB_FILE_NAME);
+        File dbFile = resolveDatabaseFile();
         boolean isNew = !dbFile.exists() || dbFile.length() == 0;
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {

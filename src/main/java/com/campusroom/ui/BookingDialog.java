@@ -11,6 +11,8 @@ import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
 /**
  * BookingDialog - Form pengajuan peminjaman ruangan kampus untuk perkuliahan pengganti/kegiatan.
@@ -24,6 +26,7 @@ public class BookingDialog extends JDialog {
 
     private JTextField txtRoom;
     private JTextField txtDate;
+    private JLabel lblDateHint;
     private JComboBox<String> cbStart;
     private JComboBox<String> cbEnd;
     private JTextField txtCourse;
@@ -69,9 +72,20 @@ public class BookingDialog extends JDialog {
         headerPanel.add(subtitleLabel, BorderLayout.SOUTH);
         add(headerPanel, BorderLayout.NORTH);
 
-        // Form Panel
+        // Form Panel Wrapper (Banner Ketentuan H-1 + GridBag Form)
+        JPanel centerWrapper = new JPanel(new BorderLayout(0, 10));
+        centerWrapper.setBorder(BorderFactory.createEmptyBorder(12, 22, 10, 22));
+
+        JPanel noticeBanner = ModernUIHelper.createCalloutCard(
+                "Ketentuan Reservasi (Maks. H-1 & Status Fiks)",
+                "Pengajuan booking ruangan wajib dilakukan paling lambat <b>H-1</b> sebelum tanggal penggunaan. " +
+                "Ruangan yang sudah disetujui resmi (<b>FIKS</b>) tidak dapat diubah atau dibatalkan.",
+                ModernUIHelper.COLOR_WARNING,
+                ModernUIHelper.COLOR_WARNING_LIGHT
+        );
+        centerWrapper.add(noticeBanner, BorderLayout.NORTH);
+
         JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBorder(BorderFactory.createEmptyBorder(15, 25, 15, 25));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.insets = new Insets(6, 6, 6, 6);
@@ -82,7 +96,23 @@ public class BookingDialog extends JDialog {
         txtRoom.setEditable(false);
         txtRoom.setBackground(new Color(241, 245, 249));
 
-        txtDate = new JTextField(initialDate.toString(), 12);
+        LocalDate minAllowed = LocalDate.now().plusDays(1);
+        boolean autoAdjusted = initialDate.isBefore(minAllowed);
+        LocalDate defaultFormDate = autoAdjusted ? minAllowed : initialDate;
+        txtDate = new JTextField(defaultFormDate.toString(), 12);
+        lblDateHint = new JLabel();
+        lblDateHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        txtDate.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { updateDateValidationHint(false); }
+            @Override public void removeUpdate(DocumentEvent e) { updateDateValidationHint(false); }
+            @Override public void changedUpdate(DocumentEvent e) { updateDateValidationHint(false); }
+        });
+        updateDateValidationHint(autoAdjusted);
+
+        JPanel datePanel = new JPanel(new BorderLayout(0, 3));
+        datePanel.setOpaque(false);
+        datePanel.add(txtDate, BorderLayout.NORTH);
+        datePanel.add(lblDateHint, BorderLayout.SOUTH);
         
         String[] timeSlots = {"07:00", "08:00", "09:00", "10:00", "10:30", "11:30", "13:00", "14:00", "15:30", "16:00", "17:30", "19:00"};
         cbStart = new JComboBox<>(timeSlots);
@@ -110,7 +140,7 @@ public class BookingDialog extends JDialog {
         // Tambah field ke GridBag
         int row = 0;
         addFormRow(formPanel, gbc, row++, "Ruangan:", txtRoom);
-        addFormRow(formPanel, gbc, row++, "Tanggal Booking (YYYY-MM-DD):", txtDate);
+        addFormRow(formPanel, gbc, row++, "Tanggal Booking (YYYY-MM-DD):", datePanel);
         
         JPanel timePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         timePanel.add(new JLabel("Mulai:"));
@@ -127,12 +157,24 @@ public class BookingDialog extends JDialog {
         addFormRow(formPanel, gbc, row++, "No. HP / WhatsApp:", txtPhone);
         addFormRow(formPanel, gbc, row++, "Alasan / Keperluan:", spPurpose);
 
-        add(formPanel, BorderLayout.CENTER);
+        centerWrapper.add(formPanel, BorderLayout.CENTER);
+        add(centerWrapper, BorderLayout.CENTER);
 
-        // Buttons Panel
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 12));
-        btnPanel.setBackground(new Color(248, 250, 252));
-        btnPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
+        // Buttons Panel + Admin Contact Help
+        JPanel footerBar = new JPanel(new BorderLayout(10, 0));
+        footerBar.setBackground(new Color(248, 250, 252));
+        footerBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)),
+                BorderFactory.createEmptyBorder(10, 18, 10, 18)
+        ));
+
+        JButton btnWaHelp = ModernUIHelper.createStyledButton("WA Admin: " + ModernUIHelper.ADMIN_PHONE, new Color(220, 252, 231), new Color(22, 101, 52), 11, true);
+        btnWaHelp.setToolTipText("Hubungi Admin Sarpras langsung via WhatsApp jika ada kendala pengajuan");
+        btnWaHelp.addActionListener(e -> ModernUIHelper.showContactAdminDialog(this));
+        footerBar.add(btnWaHelp, BorderLayout.WEST);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        btnPanel.setOpaque(false);
 
         JButton btnCancel = new JButton("Batal");
         btnCancel.addActionListener(e -> dispose());
@@ -145,7 +187,30 @@ public class BookingDialog extends JDialog {
 
         btnPanel.add(btnCancel);
         btnPanel.add(btnSubmit);
-        add(btnPanel, BorderLayout.SOUTH);
+        footerBar.add(btnPanel, BorderLayout.EAST);
+        add(footerBar, BorderLayout.SOUTH);
+    }
+
+    private void updateDateValidationHint(boolean autoAdjusted) {
+        if (lblDateHint == null || txtDate == null) return;
+        String text = txtDate.getText().trim();
+        LocalDate minAllowed = LocalDate.now().plusDays(1);
+        try {
+            LocalDate parsed = LocalDate.parse(text);
+            if (parsed.isBefore(minAllowed)) {
+                lblDateHint.setText("Peringatan: Booking maksimal H-1 (minimal tanggal " + minAllowed + ").");
+                lblDateHint.setForeground(ModernUIHelper.COLOR_DANGER);
+            } else if (autoAdjusted) {
+                lblDateHint.setText("Tanggal disesuaikan ke H+1 (" + minAllowed + ") sesuai ketentuan maks. H-1.");
+                lblDateHint.setForeground(new Color(180, 83, 9));
+            } else {
+                lblDateHint.setText("Tanggal valid (memenuhi ketentuan minimal H-1).");
+                lblDateHint.setForeground(new Color(5, 150, 105));
+            }
+        } catch (DateTimeParseException ex) {
+            lblDateHint.setText("Format tanggal harus YYYY-MM-DD.");
+            lblDateHint.setForeground(ModernUIHelper.COLOR_DANGER);
+        }
     }
 
     private void addFormRow(JPanel panel, GridBagConstraints gbc, int row, String label, Component comp) {

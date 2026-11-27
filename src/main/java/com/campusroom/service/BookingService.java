@@ -101,6 +101,23 @@ public class BookingService {
             return ServiceResult.failure("Tanggal permohonan peminjaman wajib diisi!");
         }
 
+        // Validasi Batas Pemesanan Maksimal H-1
+        LocalDate today = LocalDate.now();
+        LocalDate minAllowedDate = today.plusDays(1);
+        if (date.isBefore(minAllowedDate)) {
+            if (date.isEqual(today)) {
+                return ServiceResult.failure(
+                        "Pemesanan ruangan TIDAK DAPAT dilakukan pada hari H!\n" +
+                        "Sesuai ketentuan kampus, pengajuan booking wajib dilakukan paling lambat H-1 sebelum tanggal penggunaan ruangan (minimal besok: " + minAllowedDate + ")."
+                );
+            } else {
+                return ServiceResult.failure(
+                        "Tanggal peminjaman (" + date + ") tidak valid karena sudah lampau!\n" +
+                        "Silakan pilih tanggal minimal H-1 dari hari ini (" + minAllowedDate + ")."
+                );
+            }
+        }
+
         if (startTime == null || endTime == null || startTime.trim().isEmpty() || endTime.trim().isEmpty()) {
             return ServiceResult.failure("Jam mulai dan jam selesai perkuliahan wajib ditentukan!");
         }
@@ -165,12 +182,48 @@ public class BookingService {
         }
     }
 
+    public Booking getBookingById(int bookingId) {
+        return bookingDao.getBookingById(bookingId);
+    }
+
+    public List<Booking> getApprovedBookingsForRoom(int roomId) {
+        if (roomId <= 0) return java.util.Collections.emptyList();
+        return bookingDao.getApprovedBookingsByRoomId(roomId);
+    }
+
+    public List<Booking> getAllIncomingBookingsForRoom(int roomId) {
+        if (roomId <= 0) return java.util.Collections.emptyList();
+        return bookingDao.getAllIncomingBookingsByRoomId(roomId);
+    }
+
+    /**
+     * Memeriksa apakah tanggal booking memenuhi syarat batas maksimal H-1 (>= besok)
+     */
+    public boolean isValidBookingDateH1(LocalDate date) {
+        return date != null && !date.isBefore(LocalDate.now().plusDays(1));
+    }
+
+    /**
+     * Memeriksa apakah booking sudah berstatus FIKS (DISETUJUI resmi) sehingga terkunci dari perubahan
+     */
+    public boolean isBookingFixed(Booking booking) {
+        return booking != null && "DISETUJUI".equalsIgnoreCase(booking.getStatus());
+    }
+
     /**
      * Memproses tahapan validasi oleh Sekretaris Dekan (Tingkat 1)
      */
     public ServiceResult<Void> validateBySecretary(int bookingId, boolean approve, String note) {
         if (bookingId <= 0) {
             return ServiceResult.failure("ID pengajuan booking tidak valid!");
+        }
+
+        Booking existing = bookingDao.getBookingById(bookingId);
+        if (existing == null) {
+            return ServiceResult.failure("Data pengajuan booking tidak ditemukan!");
+        }
+        if (isBookingFixed(existing)) {
+            return ServiceResult.failure("Pengajuan " + existing.getBookingCode() + " sudah berstatus FIKS (DISETUJUI) dan tidak dapat diubah lagi!");
         }
 
         String targetStatus = approve ? "DIVALIDASI_SEKDEK" : "DITOLAK";
@@ -198,6 +251,14 @@ public class BookingService {
             return ServiceResult.failure("ID pengajuan booking tidak valid!");
         }
 
+        Booking existing = bookingDao.getBookingById(bookingId);
+        if (existing == null) {
+            return ServiceResult.failure("Data pengajuan booking tidak ditemukan!");
+        }
+        if (isBookingFixed(existing)) {
+            return ServiceResult.failure("Pengajuan " + existing.getBookingCode() + " sudah berstatus FIKS (DISETUJUI) dan tidak dapat diubah lagi!");
+        }
+
         String targetStatus = approve ? "DISETUJUI" : "DITOLAK";
         String finalNote = note;
         if (finalNote == null || finalNote.trim().isEmpty()) {
@@ -212,6 +273,43 @@ public class BookingService {
             return ServiceResult.success(msg);
         } else {
             return ServiceResult.failure("Gagal memperbarui status approval booking di database.");
+        }
+    }
+
+    /**
+     * Membatalkan pengajuan booking yang masih menunggu verifikasi.
+     * Booking yang sudah berstatus DISETUJUI (FIKS) ditolak dari pembatalan/perubahan.
+     */
+    public ServiceResult<Void> cancelBooking(int bookingId, User currentUser) {
+        if (bookingId <= 0) {
+            return ServiceResult.failure("ID pengajuan booking tidak valid!");
+        }
+
+        Booking existing = bookingDao.getBookingById(bookingId);
+        if (existing == null) {
+            return ServiceResult.failure("Data pengajuan booking tidak ditemukan!");
+        }
+
+        if (isBookingFixed(existing)) {
+            return ServiceResult.failure(
+                    "Pengajuan " + existing.getBookingCode() + " sudah berstatus FIKS (DISETUJUI Resmi) dan tidak dapat diubah atau dibatalkan!"
+            );
+        }
+
+        if ("DITOLAK".equalsIgnoreCase(existing.getStatus())) {
+            return ServiceResult.failure("Pengajuan yang sudah ditolak tidak dapat dibatalkan.");
+        }
+
+        if (currentUser != null && "MAHASISWA".equalsIgnoreCase(currentUser.getRole())
+                && existing.getUserId() != currentUser.getId()) {
+            return ServiceResult.failure("Anda tidak memiliki hak untuk membatalkan pengajuan milik pengguna lain!");
+        }
+
+        boolean deleted = bookingDao.deleteBooking(bookingId);
+        if (deleted) {
+            return ServiceResult.success("Pengajuan " + existing.getBookingCode() + " berhasil dibatalkan.");
+        } else {
+            return ServiceResult.failure("Gagal membatalkan pengajuan di database.");
         }
     }
 }

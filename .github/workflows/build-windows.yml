@@ -1,0 +1,100 @@
+name: Build Standalone Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "maven"
+
+      - name: Run unit & UI verification tests
+        run: mvn -B test
+
+      - name: Package application & collect runtime dependencies
+        shell: pwsh
+        run: |
+          mvn -B package -DskipTests
+          Copy-Item "target/campusroom-app-1.0.0.jar" "target/jpackage-input/" -Force
+
+      - name: Build Portable Windows Bundle (CampusRoom.exe + Embedded JRE)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "target/dist-portable" | Out-Null
+          jpackage `
+            --type app-image `
+            --name "CampusRoom" `
+            --app-version "1.0.0" `
+            --vendor "CampusRoom" `
+            --description "Aplikasi Manajemen Booking Ruangan Kampus" `
+            --input "target/jpackage-input" `
+            --main-jar "campusroom-app-1.0.0.jar" `
+            --main-class "com.campusroom.CampusRoomApp" `
+            --add-modules "java.base,java.desktop,java.sql,java.logging,java.naming,java.prefs,java.management,java.xml,jdk.crypto.ec" `
+            --dest "target/dist-portable"
+          Compress-Archive -Path "target/dist-portable/CampusRoom" -DestinationPath "target/CampusRoom-1.0.0-Windows-Portable.zip" -Force
+
+      - name: Check & Build Windows Setup Installer (.exe) if WiX is available
+        shell: pwsh
+        run: |
+          if ($env:WIX -and (Test-Path "$env:WIX\bin")) {
+            $env:PATH = "$env:WIX\bin;$env:PATH"
+          }
+          if (Get-Command candle.exe -ErrorAction SilentlyContinue) {
+            New-Item -ItemType Directory -Force -Path "target/dist-installer" | Out-Null
+            jpackage `
+              --type exe `
+              --name "CampusRoom" `
+              --app-version "1.0.0" `
+              --vendor "CampusRoom" `
+              --description "Aplikasi Manajemen Booking Ruangan Kampus" `
+              --input "target/jpackage-input" `
+              --main-jar "campusroom-app-1.0.0.jar" `
+              --main-class "com.campusroom.CampusRoomApp" `
+              --add-modules "java.base,java.desktop,java.sql,java.logging,java.naming,java.prefs,java.management,java.xml,jdk.crypto.ec" `
+              --win-per-user-install `
+              --win-dir-chooser `
+              --win-shortcut `
+              --win-menu `
+              --dest "target/dist-installer"
+          } else {
+            Write-Host "WiX Toolset not found; skipping Setup .exe (Portable ZIP with CampusRoom.exe is ready)."
+          }
+
+      - name: Upload Windows Portable ZIP (Zero-Install)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CampusRoom-Windows-Portable-ZIP
+          path: target/CampusRoom-1.0.0-Windows-Portable.zip
+          if-no-files-found: error
+
+      - name: Upload Windows Installer (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CampusRoom-Windows-Installer-EXE
+          path: target/dist-installer/*.exe
+          if-no-files-found: ignore
+
+      - name: Attach to GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/CampusRoom-1.0.0-Windows-Portable.zip
+            target/dist-installer/*.exe

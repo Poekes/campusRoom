@@ -68,6 +68,40 @@ public class RenderVerificationTest {
             inspectorDlg.dispose();
             System.out.println("[PASS] RoomInspectorDialog rendered successfully (" + imgInspector.getWidth() + "x" + imgInspector.getHeight() + ").");
 
+            // Test 5: Render RoomDetailDialog with full room schedule tabs
+            System.out.println("Rendering RoomDetailDialog...");
+            RoomDetailDialog detailDlg = new RoomDetailDialog(null, sampleRoom, java.time.LocalDate.now().plusDays(1), "08:00", "10:30", null);
+            detailDlg.pack();
+            if (detailDlg.getTabbedPane() == null || detailDlg.getTabbedPane().getTabCount() != 3) {
+                throw new AssertionError("RoomDetailDialog must have 3 tabs!");
+            }
+            if (detailDlg.getRegularScheduleCount() < 1) {
+                throw new AssertionError("Room 1 (R. 201) should have regular schedules in RoomDetailDialog!");
+            }
+            for (int t = 0; t < detailDlg.getTabbedPane().getTabCount(); t++) {
+                detailDlg.getTabbedPane().setSelectedIndex(t);
+                BufferedImage imgDetail = new BufferedImage(Math.max(1, detailDlg.getWidth()), Math.max(1, detailDlg.getHeight()), BufferedImage.TYPE_INT_ARGB);
+                Graphics2D gDetail = imgDetail.createGraphics();
+                detailDlg.paint(gDetail);
+                gDetail.dispose();
+            }
+            detailDlg.dispose();
+            System.out.println("[PASS] RoomDetailDialog rendered all 3 tabs successfully.");
+
+            // Test 6: Render Contact Admin WhatsApp Dialog & check wa.me URL builder
+            System.out.println("Rendering Contact Admin WhatsApp Dialog...");
+            JDialog contactDlg = ModernUIHelper.createContactAdminDialog(mainFrame);
+            BufferedImage imgContact = new BufferedImage(Math.max(1, contactDlg.getWidth()), Math.max(1, contactDlg.getHeight()), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D gContact = imgContact.createGraphics();
+            contactDlg.paint(gContact);
+            gContact.dispose();
+            contactDlg.dispose();
+            String waUrl = ModernUIHelper.buildWhatsAppUrl(ModernUIHelper.ADMIN_PHONE_INTL, "Halo Admin");
+            if (!waUrl.startsWith("https://wa.me/6281399887766?text=")) {
+                throw new AssertionError("Invalid WhatsApp URL: " + waUrl);
+            }
+            System.out.println("[PASS] Contact Admin WhatsApp dialog rendered successfully.");
+
             mainFrame.dispose();
             System.out.println("ALL GUI RENDERING TESTS PASSED WITH ZERO EXCEPTIONS!");
         } catch (Throwable t) {
