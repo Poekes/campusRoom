@@ -151,4 +151,30 @@ public class MasterDataServiceTest {
             }
         }
     }
+
+    @Test
+    public void testFreshDatabaseBootstrapAndLogin() throws Exception {
+        java.nio.file.Path tempDb = java.nio.file.Files.createTempFile("campusroom_fresh_", ".db");
+        java.nio.file.Files.deleteIfExists(tempDb);
+        String prevDbPath = System.getProperty("campusroom.db.path");
+        try {
+            System.setProperty("campusroom.db.path", tempDb.toAbsolutePath().toString());
+            com.campusroom.dao.DatabaseHelper.initializeDatabase();
+
+            com.campusroom.dao.UserDao userDao = new com.campusroom.dao.UserDao();
+            Assertions.assertNotNull(userDao.authenticate("mahasiswa", "123"), "Akun demo mahasiswa harus bisa login pada DB baru");
+            Assertions.assertNotNull(userDao.authenticate("sekdek", "123"), "Akun demo sekdek harus bisa login pada DB baru");
+            Assertions.assertNotNull(userDao.authenticate("admin", "123"), "Akun demo admin harus bisa login pada DB baru");
+
+            Assertions.assertEquals(1, masterDataService.getAllCampuses().size());
+            Assertions.assertEquals(3, masterDataService.getAllBuildings().size());
+        } finally {
+            if (prevDbPath == null) {
+                System.clearProperty("campusroom.db.path");
+            } else {
+                System.setProperty("campusroom.db.path", prevDbPath);
+            }
+            java.nio.file.Files.deleteIfExists(tempDb);
+        }
+    }
 }

@@ -174,13 +174,20 @@ public class DatabaseHelper {
                     "FOREIGN KEY(building_id) REFERENCES buildings(id) ON DELETE CASCADE" +
                     ");");
 
-            // Periksa jika tabel campuses kosong, lakukan seed data awal lengkap
-            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM campuses;");
-            if (rs.next() && rs.getInt(1) == 0) {
+            // Periksa jika tabel campuses kosong atau database sebelumnya gagal ter-seed penuh
+            boolean needsFullSeed = false;
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM campuses;")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    needsFullSeed = true;
+                }
+            }
+
+            if (needsFullSeed) {
                 seedInitialData(conn);
             } else {
-                // Database sudah ada, sinkronisasi data riil terbaru jika diperlukan
+                // Database sudah ada, sinkronisasi & pulihkan data riil jika ada tabel inti yang kosong
                 syncRealData(conn);
+                ensureCoreSeedData(conn);
             }
 
             System.out.println("Inisialisasi Database SQLite Berhasil.");
@@ -190,25 +197,95 @@ public class DatabaseHelper {
         }
     }
 
+    private static void ensureCoreSeedData(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            try (ResultSet rsB = stmt.executeQuery("SELECT COUNT(*) FROM buildings;")) {
+                if (rsB.next() && rsB.getInt(1) == 0) {
+                    seedBuildings(conn);
+                    seedFloorPlans(conn);
+                    seedRooms(conn);
+                }
+            }
+            try (ResultSet rsU = stmt.executeQuery("SELECT COUNT(*) FROM users;")) {
+                if (rsU.next() && rsU.getInt(1) == 0) {
+                    seedUsers(conn);
+                }
+            }
+            try (ResultSet rsS = stmt.executeQuery("SELECT COUNT(*) FROM regular_schedules;")) {
+                if (rsS.next() && rsS.getInt(1) == 0) {
+                    seedSchedules(conn);
+                }
+            }
+            try (ResultSet rsBk = stmt.executeQuery("SELECT COUNT(*) FROM bookings;")) {
+                if (rsBk.next() && rsBk.getInt(1) == 0) {
+                    seedBookings(conn);
+                }
+            }
+        }
+    }
+
     private static void seedInitialData(Connection conn) throws SQLException {
         System.out.println("Memulai Seeding Data Awal Riil CampusRoom...");
 
-        // 1. Seed Kampus (Default hanya Kampus 2)
-        try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO campuses (id, code, name, address, city) VALUES (?, ?, ?, ?, ?)")) {
-            ps.setInt(1, 2);
-            ps.setString(2, "KMP-02");
-            ps.setString(3, "Kampus 2");
-            ps.setString(4, "Jl. Kaliurang KM 14.5, Sleman");
-            ps.setString(5, "Yogyakarta");
-            ps.executeUpdate();
-        }
+        boolean prevAutoCommit = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try {
+            // 1. Seed Kampus (Default hanya Kampus 2)
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO campuses (id, code, name, address, city) VALUES (?, ?, ?, ?, ?)")) {
+                ps.setInt(1, 2);
+                ps.setString(2, "KMP-02");
+                ps.setString(3, "Kampus 2");
+                ps.setString(4, "Jl. Kaliurang KM 14.5, Sleman");
+                ps.setString(5, "Yogyakarta");
+                ps.executeUpdate();
+            }
 
-        // 2. Seed Gedung
+            // 2. Seed Gedung (semua merujuk campus_id = 2 yang valid sesuai constraint FK)
+            seedBuildings(conn);
+
+            // 3. Seed Blueprint Denah per Lantai
+            seedFloorPlans(conn);
+
+            // 4. Seed Seluruh Ruangan Riil (dengan koordinat presisi denah)
+            seedRooms(conn);
+
+            // 5. Seed Pengguna (Mahasiswa, Sekdek, Admin)
+            seedUsers(conn);
+
+            // 6. Seed Jadwal Tetap Perkuliahan
+            seedSchedules(conn);
+
+            // 7. Seed Contoh Booking Pengajuan Mahasiswa
+            seedBookings(conn);
+
+            // Atur SQLite auto-increment counter
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("DELETE FROM sqlite_sequence WHERE name = 'rooms';");
+                st.executeUpdate("INSERT INTO sqlite_sequence (name, seq) VALUES ('rooms', 123);");
+            }
+
+            conn.commit();
+            System.out.println("Seeding Data Awal Riil Selesai.");
+        } catch (SQLException e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {
+            }
+            throw e;
+        } finally {
+            try {
+                conn.setAutoCommit(prevAutoCommit);
+            } catch (SQLException ignored) {
+            }
+        }
+    }
+
+    private static void seedBuildings(Connection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO buildings (id, campus_id, code, name, total_floors, floor_plan_image_path) VALUES (?, ?, ?, ?, ?, ?)")) {
             ps.setInt(1, 1);
-            ps.setInt(2, 1);
+            ps.setInt(2, 2);
             ps.setString(3, "GDG-A");
             ps.setString(4, "Gedung A (Fakultas Teknik)");
             ps.setInt(5, 5);
@@ -216,7 +293,7 @@ public class DatabaseHelper {
             ps.executeUpdate();
 
             ps.setInt(1, 2);
-            ps.setInt(2, 1);
+            ps.setInt(2, 2);
             ps.setString(3, "GDG-B");
             ps.setString(4, "Gedung B (Laboratorium Terpadu)");
             ps.setInt(5, 3);
@@ -231,29 +308,6 @@ public class DatabaseHelper {
             ps.setString(6, "images/kampus2_lantai_1.png");
             ps.executeUpdate();
         }
-
-        // 3. Seed Blueprint Denah per Lantai
-        seedFloorPlans(conn);
-
-        // 4. Seed Seluruh Ruangan Riil (dengan koordinat presisi denah)
-        seedRooms(conn);
-
-        // 5. Seed Pengguna (Mahasiswa, Sekdek, Admin)
-        seedUsers(conn);
-
-        // 6. Seed Jadwal Tetap Perkuliahan
-        seedSchedules(conn);
-
-        // 7. Seed Contoh Booking Pengajuan Mahasiswa
-        seedBookings(conn);
-
-        // Atur SQLite auto-increment counter
-        try (Statement st = conn.createStatement()) {
-            st.executeUpdate("DELETE FROM sqlite_sequence WHERE name = 'rooms';");
-            st.executeUpdate("INSERT INTO sqlite_sequence (name, seq) VALUES ('rooms', 123);");
-        }
-
-        System.out.println("Seeding Data Awal Riil Selesai.");
     }
 
     private static void seedFloorPlans(Connection conn) throws SQLException {
@@ -513,9 +567,10 @@ public class DatabaseHelper {
     private static void syncRealData(Connection conn) {
         try (Statement stmt = conn.createStatement()) {
             // Pastikan hanya lokasi Kampus 2 yang aktif secara default (kampus lain dapat ditambah lewat Admin)
-            stmt.executeUpdate("DELETE FROM campuses WHERE name LIKE '%Kampus Utama%';");
             stmt.executeUpdate("INSERT OR IGNORE INTO campuses (id, code, name, address, city) VALUES (2, 'KMP-02', 'Kampus 2', 'Jl. Kaliurang KM 14.5, Sleman', 'Yogyakarta');");
             stmt.executeUpdate("UPDATE campuses SET name = 'Kampus 2', code = 'KMP-02' WHERE id = 2;");
+            stmt.executeUpdate("UPDATE buildings SET campus_id = 2 WHERE campus_id NOT IN (SELECT id FROM campuses);");
+            stmt.executeUpdate("DELETE FROM campuses WHERE name LIKE '%Kampus Utama%';");
 
             // Pastikan blueprint Kampus 2 sesuai file gambar denah visual
             stmt.executeUpdate("UPDATE buildings SET name = 'Gedung Kampus 2', code = 'GDG-K2', total_floors = 3, floor_plan_image_path = 'images/kampus2_lantai_1.png' WHERE id = 3;");
